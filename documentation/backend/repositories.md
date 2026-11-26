@@ -97,7 +97,9 @@ sql`
 
 ## Redis
 
-Redis-репозиторіїв немає: у `app/repositories/` усі модулі працюють лише з PostgreSQL. Redis використовується напряму з сервісів і WS-шару — [auth-throttle-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-throttle-service.ts) (Lua `INCR`+`EXPIRE`, ключ `auth:throttle:*`), [generate-ws-token-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/generate-ws-token-service.ts) (`setex`), [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts) (`auth:ws:*`).
+Redis-репозиторіїв немає: у `app/repositories/` усі модулі працюють лише з PostgreSQL. Redis використовується напряму з сервісів і WS-шару — [auth-throttle-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-throttle-service.ts) (Lua `INCR`+`PEXPIRE`, ключ `auth:throttle:*`), [generate-ws-token-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/generate-ws-token-service.ts) (`SET … EX`), [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts) (`auth:ws:*`).
+
+TTL ставиться лише через функції [redis-ttl.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/redis-ttl.ts) (feat-270): `setWithTtlSeconds` (`EX`) бере `Seconds`, `setIfAbsentWithTtlMs` (`PX … NX`) бере `Milliseconds`, а `secondsArg` / `msArg` передають TTL у Lua-скрипт. ioredis типізує TTL голим числом, тож без них тривалість у чужих одиницях компілювалася б; ESLint відхиляє `setex`, `pexpire`, `expire` і `set(…, 'EX' | 'PX', …)` в `app/`.
 
 ## Зведена таблиця
 

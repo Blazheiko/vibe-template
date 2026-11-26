@@ -1,6 +1,6 @@
 import type { Redis } from 'ioredis'
 import { seconds } from 'shared/brand'
-import type { MfaTicketId } from '#app/domain/secrets.js'
+import type { MfaBinding, MfaTicketId } from '#app/domain/secrets.js'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MfaTicket as Ticket } from './mfa-ticket.js'
@@ -82,7 +82,7 @@ const ticket = (): Ticket => ({
     state: 'open',
     userId: '7',
     userTokenAtStart: 'token-at-start-1',
-    binding: 'browser-a',
+    binding: 'browser-a' as MfaBinding,
     origin: { method: 'password' },
     firstFactor: 'pwd',
     failures: 0,

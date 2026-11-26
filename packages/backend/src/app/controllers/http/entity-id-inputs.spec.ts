@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
     readAll: vi.fn(),
     unlink: vi.fn(),
     getTextUsage: vi.fn(),
+    getChatHistory: vi.fn(),
 }))
 
 vi.mock('#app/services/admin/admin-user-service.js', () => ({
@@ -66,7 +67,9 @@ vi.mock('#app/services/support/knowledge-base-service.js', () => ({
 vi.mock('#app/services/support/knowledge-base-init-service.js', () => ({
     knowledgeBaseInitService: {},
 }))
-vi.mock('#app/services/support/support-service.js', () => ({ supportService: {} }))
+vi.mock('#app/services/support/support-service.js', () => ({
+    supportService: { getChatHistory: mocks.getChatHistory },
+}))
 vi.mock('#app/services/notifications/push-subscription-service.js', () => ({
     pushSubscriptionService: { getSubscription: mocks.getSubscription },
 }))
@@ -170,6 +173,7 @@ function arrangeServices() {
     mocks.readAll.mockResolvedValue(Result.ok({ updated: 0 }))
     mocks.unlink.mockResolvedValue(notFoundResult())
     mocks.getTextUsage.mockResolvedValue({ rows: [], total: 0 })
+    mocks.getChatHistory.mockResolvedValue(Result.ok({ data: [], hasMore: false }))
 }
 
 /** The id the mocked service got as the first field of interest, or `undefined` if not called. */
@@ -252,6 +256,16 @@ describe('feat-262 contract table: controller inputs', () => {
             run: (raw: string) =>
                 call((c) => SupportController.getScreenshot(c), { params: { articleId: raw } }),
             got: () => firstArg(mocks.getScreenshotUrl, (a) => a[0]),
+        },
+        {
+            // feat-270: read by its brand in the controller, not by a throwing cast in the service.
+            name: 'support ?before',
+            status: 400,
+            run: (raw: string) =>
+                call((c) => SupportController.getChatHistory(c), {
+                    query: { before: raw, limit: 20 },
+                }),
+            got: () => firstArg(mocks.getChatHistory, (a) => (a[1] as { before?: unknown }).before),
         },
         {
             name: 'push :subscriptionId',

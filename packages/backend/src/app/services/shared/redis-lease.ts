@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid'
 import { type Milliseconds, ms } from 'shared/brand'
 
 import redis, { withRedis } from '#database/redis.js'
+import { msArg, setIfAbsentWithTtlMs } from '#app/services/shared/redis-ttl.js'
 import databasePoolConfig, { statementBoundMs } from '#config/database-pool.js'
 
 // A Redis lock that is a lease with an owner (first used by the support in-flight lock, feat-115
@@ -120,7 +121,7 @@ export async function acquireLease(
     // feat-122 (L6): a monotonic clock; a wall-clock step must not stretch or shorten the lease.
     const now = (): number => performance.now()
     const startedAt = now()
-    const reply = await withRedis(() => redis.set(key, token, 'PX', lease.ttlMs, 'NX'))
+    const reply = await withRedis(() => setIfAbsentWithTtlMs(redis, key, token, lease.ttlMs))
     if (reply !== 'OK') return null
 
     const lostController = new AbortController()
@@ -168,7 +169,7 @@ export async function acquireLease(
         const sentAt = now()
         try {
             const renewed = await withRedis(() =>
-                redis.eval(RENEW_LUA, 1, key, token, String(lease.ttlMs)),
+                redis.eval(RENEW_LUA, 1, key, token, msArg(lease.ttlMs)),
             )
             if (lostController.signal.aborted || released) return
             if (renewed === 1) armDeadline(sentAt)

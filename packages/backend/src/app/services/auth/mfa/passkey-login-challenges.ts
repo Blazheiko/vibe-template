@@ -3,6 +3,7 @@ import { seconds, type Seconds } from 'shared/brand'
 import type { MfaTicketId } from '#app/domain/secrets.js'
 
 import redis, { withRedis } from '#database/redis.js'
+import { setWithTtlSeconds } from '#app/services/shared/redis-ttl.js'
 import webauthnConfig from '#config/webauthn.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р5, Р6): the WebAuthn challenges that live outside a
@@ -30,7 +31,7 @@ const ttlOf = (ttl?: Seconds): Seconds =>
 export const passkeyLoginChallenges = {
     async issue(challenge: string): Promise<string> {
         const id = randomBytes(16).toString('base64url')
-        await withRedis(() => redis.set(`${LOGIN}${id}`, challenge, 'EX', ttlOf()))
+        await withRedis(() => setWithTtlSeconds(redis, `${LOGIN}${id}`, challenge, ttlOf()))
         return id
     },
 
@@ -49,7 +50,12 @@ export const passkeyTicketChallenges = {
         ticketTtlSeconds: Seconds,
     ): Promise<void> {
         await withRedis(() =>
-            redis.set(`${MFA}${ticketHash(ticketId)}`, challenge, 'EX', ttlOf(ticketTtlSeconds)),
+            setWithTtlSeconds(
+                redis,
+                `${MFA}${ticketHash(ticketId)}`,
+                challenge,
+                ttlOf(ticketTtlSeconds),
+            ),
         )
     },
 

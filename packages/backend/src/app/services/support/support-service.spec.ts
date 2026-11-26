@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { uid } from '../../../test-support/ids.js'
+import type { SupportMessageId } from '#app/domain/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 
@@ -208,14 +209,17 @@ describe('supportService', () => {
             })
         })
 
-        it('passes the cursor and the page size to the repository, the cursor as a bigint', async () => {
+        it('passes the cursor and the page size to the repository', async () => {
             supportRepositoryMock.findChatHistoryPage.mockResolvedValue({
                 rows: [],
                 hasMore: false,
             })
 
             const { supportService } = await loadSupportService()
-            await supportService.getChatHistory(uid(11), { before: '812', limit: 20 })
+            await supportService.getChatHistory(uid(11), {
+                before: 812n as SupportMessageId,
+                limit: 20,
+            })
             await supportService.getChatHistory(uid(11), { limit: 50 })
 
             expect(supportRepositoryMock.findChatHistoryPage.mock.calls).toEqual([

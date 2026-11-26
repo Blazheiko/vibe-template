@@ -1,4 +1,5 @@
 import redis from '#database/redis-rate-limit.js'
+import { msArg } from '#app/services/shared/redis-ttl.js'
 import { diffMs, ms, seconds, toSecondsCeil, unixMs, type Seconds } from 'shared/brand'
 import logger from '#logger'
 import type { UserId } from '#app/domain/ids.js'
@@ -107,7 +108,7 @@ function reservationOf(
             const delta = spent() - reserved
             try {
                 if (delta !== 0) {
-                    await redis.eval(SETTLE_LUA, 1, key, String(delta), String(DAY_KEY_TTL_MS))
+                    await redis.eval(SETTLE_LUA, 1, key, String(delta), msArg(DAY_KEY_TTL_MS))
                 }
                 settled = true
             } catch (err) {
@@ -143,7 +144,7 @@ export async function reserveDailyTokens(
             key,
             String(reserved),
             String(options.limit),
-            String(DAY_KEY_TTL_MS),
+            msArg(DAY_KEY_TTL_MS),
         ),
     )
     if (value < 0) return { allowed: false, retryAfterSeconds: secondsToUtcMidnight(now) }

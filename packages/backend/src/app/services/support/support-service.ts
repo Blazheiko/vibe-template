@@ -40,7 +40,7 @@ import {
     acquireSupportLock,
     type SupportLease,
 } from '#app/services/support/support-inflight-lock.js'
-import { asSupportMessageId, type UserId, toEntityId } from '#app/domain/ids.js'
+import { type SupportMessageId, type UserId, toEntityId } from '#app/domain/ids.js'
 
 export interface SupportChatHistoryItem {
     id: EntityId
@@ -277,11 +277,10 @@ export const supportService = {
      */
     async getChatHistory(
         userId: UserId,
-        page: { before?: string | undefined; limit: number },
+        page: { before?: SupportMessageId | undefined; limit: number },
     ): Promise<AppResult<{ data: SupportChatHistoryItem[]; hasMore: boolean }>> {
         const { rows, hasMore } = await supportRepository.findChatHistoryPage(userId, {
-            // The schema has checked `before` (EntityIdStringSchema): it is a row id.
-            before: page.before === undefined ? undefined : asSupportMessageId(page.before),
+            before: page.before,
             limit: page.limit,
         })
 

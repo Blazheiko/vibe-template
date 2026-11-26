@@ -188,6 +188,34 @@ export default tseslint.config(
         },
     },
     {
+        // feat-270 (plan Р7, T39): ioredis takes an expiry as a bare number, so EX seconds and
+        // PX milliseconds mix up silently. App code sets an expiry through the typed helpers of
+        // app/services/shared/redis-ttl.ts.
+        files: ['packages/backend/src/app/**/*.ts'],
+        ignores: [
+            '**/*.spec.ts',
+            '**/*.test.ts',
+            'packages/backend/src/app/services/shared/redis-ttl.ts',
+        ],
+        rules: {
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector:
+                        'CallExpression[callee.property.name=/^(setex|psetex|expire|pexpire|expireat|pexpireat|getex)$/]',
+                    message:
+                        'Set a Redis expiry through app/services/shared/redis-ttl.ts: its helpers take Seconds or Milliseconds (plan Р7).',
+                },
+                {
+                    selector:
+                        "CallExpression[callee.property.name='set'] > Literal[value=/^(EX|PX|EXAT|PXAT)$/i]",
+                    message:
+                        'Set a Redis expiry through app/services/shared/redis-ttl.ts: its helpers take Seconds or Milliseconds (plan Р7).',
+                },
+            ],
+        },
+    },
+    {
         files: ['**/*.spec.ts', '**/*.test.ts'],
         rules: {
             '@typescript-eslint/no-unsafe-assignment': 'off',

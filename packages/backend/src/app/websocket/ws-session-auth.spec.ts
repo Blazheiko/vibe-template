@@ -15,7 +15,7 @@ const redis = vi.hoisted(() => ({
     getdel: vi.fn(),
     expire: vi.fn(),
     del: vi.fn(),
-    setex: vi.fn(),
+    set: vi.fn(),
 }))
 const withRedis = vi.hoisted(() => vi.fn(async <T>(op: () => Promise<T>): Promise<T> => op()))
 vi.mock('#database/redis.js', () => ({ default: redis, withRedis }))
@@ -41,6 +41,24 @@ beforeEach(() => {
 })
 
 describe('verifyUpgradeToken', () => {
+    // feat-270 (plan Р13, T15): the record's userId is read by parseUserId, before the session.
+    it.each([['abc'], ['0'], ['007'], [' 1'], [7], [null]])(
+        'missing for a token record whose userId is %j, without a session lookup',
+        async (userId) => {
+            redis.getdel.mockResolvedValueOnce(
+                JSON.stringify({ sessionId: 's1', userId, userToken: 'u1' }),
+            )
+            redis.get.mockResolvedValue(
+                JSON.stringify({ id: 's1', data: { userId }, createdAt: new Date().toISOString() }),
+            )
+            await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
+                kind: 'missing',
+            })
+            expect(redis.get).not.toHaveBeenCalled()
+            expect(checkSessionToken).not.toHaveBeenCalled()
+        },
+    )
+
     it('ok when token and session match', async () => {
         redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
         redis.get.mockResolvedValueOnce(SESSION_DATA)

@@ -1,4 +1,5 @@
 import redis from '#database/redis-rate-limit.js'
+import { msArg } from '#app/services/shared/redis-ttl.js'
 import type { ThrottlePolicy } from '#config/throttle-policies.js'
 import { rateLimitKeyForIp } from '#vendor/utils/network/ip-address.js'
 
@@ -25,7 +26,7 @@ export async function consumeAuthThrottle(
     key: string,
 ): Promise<{ allowed: boolean; count: number }> {
     const count = Number(
-        await redis.eval(THROTTLE_LUA, 1, throttleKey(policy, key), String(policy.windowMs)),
+        await redis.eval(THROTTLE_LUA, 1, throttleKey(policy, key), msArg(policy.windowMs)),
     )
 
     return {

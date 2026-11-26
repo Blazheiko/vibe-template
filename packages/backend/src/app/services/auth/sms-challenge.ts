@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { type UnixMs, nowUnixMs } from 'shared/brand'
+import { type UnixMs, addMs, nowUnixMs, toMs } from 'shared/brand'
 import { otpCodeOf, type OtpHash } from '#app/domain/secrets.js'
 import { authConfig } from '#config/auth.js'
 import {
@@ -95,8 +95,8 @@ export async function openChallenge(options: {
                 flow: options.flow,
                 phone: options.phone,
                 codeHash: options.codeHash ?? PENDING_SMS_CODE_HASH_PLACEHOLDER,
-                expiresAt: new Date(now + authConfig.smsChallengeTtlSeconds * 1000),
-                resendAvailableAt: new Date(now + authConfig.smsResendCooldownSeconds * 1000),
+                expiresAt: new Date(addMs(now, toMs(authConfig.smsChallengeTtlSeconds))),
+                resendAvailableAt: new Date(addMs(now, toMs(authConfig.smsResendCooldownSeconds))),
                 providerRequestId: null,
                 metadata: options.metadata,
             },
@@ -172,8 +172,8 @@ export async function openSessionChallenge(options: {
                 flow: options.flow,
                 phone: options.phone,
                 codeHash: options.codeHash ?? PENDING_SMS_CODE_HASH_PLACEHOLDER,
-                expiresAt: new Date(now + authConfig.smsChallengeTtlSeconds * 1000),
-                resendAvailableAt: new Date(now + authConfig.smsResendCooldownSeconds * 1000),
+                expiresAt: new Date(addMs(now, toMs(authConfig.smsChallengeTtlSeconds))),
+                resendAvailableAt: new Date(addMs(now, toMs(authConfig.smsResendCooldownSeconds))),
                 providerRequestId: null,
                 metadata: options.metadata,
             },
