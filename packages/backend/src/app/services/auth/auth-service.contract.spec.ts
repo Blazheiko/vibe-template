@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -138,7 +139,7 @@ const PAST = new Date(Date.now() - 1000)
 const IP = { ipAddress: '203.0.113.9' }
 const CSRF = 'c'.repeat(43)
 /** The user token the request presented; account() below still holds it (feat-096). */
-const TOKEN = 'old-token'
+const TOKEN = 'old-token' as SessionToken
 /** feat-245 (Р3): the auth state of the request's session, with the marks it carries. */
 const authWith = (verified: SessionAuthState['verified']): SessionAuthState => ({
     v: 1,
@@ -275,7 +276,7 @@ const confirmLink =
             testUserActor(),
         )
 // feat-096: the same calls as a session presenting `presented` (undefined: none at all).
-const confirmLinkAs = (presented: string | undefined) => (s: Service) =>
+const confirmLinkAs = (presented: SessionToken | undefined) => (s: Service) =>
     s.confirmPhoneLink(
         uid(7),
         { challengeId: 'ch-1', code: '123456' },
@@ -288,7 +289,7 @@ const confirmLinkAs = (presented: string | undefined) => (s: Service) =>
         testUserActor(),
     )
 const startLinkAs =
-    (presented: string | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
+    (presented: SessionToken | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
     (s: Service) =>
         s.startPhoneLink(
             uid(7),
@@ -303,7 +304,7 @@ const startLinkAs =
         )
 const startLink = startLinkAs(TOKEN)
 const startEmailAs =
-    (presented: string | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
+    (presented: SessionToken | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
     (s: Service) =>
         s.startEmailLink(
             uid(7),
@@ -315,7 +316,7 @@ const startEmailAs =
 const startEmail = startEmailAs(TOKEN)
 const changeAs =
     (
-        presented: string | undefined,
+        presented: SessionToken | undefined,
         payload: Record<string, unknown>,
         /** null: a session with no auth state (one stored before feat-245). */
         sessionAuth: SessionAuthState | null = FRESH_PASSWORD,
@@ -340,7 +341,7 @@ const account = (over: Record<string, unknown> = {}) => ({
     email: null,
     phone: null,
     password: 'stored-hash',
-    sessionToken: 'old-token',
+    sessionToken: 'old-token' as SessionToken,
     ...over,
 })
 
@@ -686,7 +687,7 @@ const ROWS: readonly Row[] = [
     ).map(([state, presented]): Row => ({
         name: `startPhoneLink · ${state}`,
         arrange: arrangeLinkStart,
-        call: startLinkAs(presented),
+        call: startLinkAs(presented as SessionToken | undefined),
         error: SESSION_REVOKED,
         after: () => {
             expect(validatePasswordMock).not.toHaveBeenCalled()
@@ -871,7 +872,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
             challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
         },
-        call: confirmLinkAs(presented),
+        call: confirmLinkAs(presented as SessionToken | undefined),
         error: SESSION_REVOKED,
         after: () => {
             expect(challengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
@@ -950,7 +951,7 @@ const ROWS: readonly Row[] = [
             validatePasswordMock.mockResolvedValue(true)
             userRepositoryMock.emailExistsForOtherUser.mockResolvedValue(false)
         },
-        call: startEmailAs(presented),
+        call: startEmailAs(presented as SessionToken | undefined),
         error: SESSION_REVOKED,
         after: () => {
             expect(validatePasswordMock).not.toHaveBeenCalled()
@@ -1192,7 +1193,7 @@ const ROWS: readonly Row[] = [
             expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
                 7n,
                 TOKEN,
-                { sessionToken: 'rotated-token' },
+                { sessionToken: 'rotated-token' as SessionToken },
                 expect.anything(),
             )
             expect(authMock.logoutAll).not.toHaveBeenCalled()
@@ -1224,7 +1225,7 @@ const ROWS: readonly Row[] = [
             expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
                 7n,
                 TOKEN,
-                { sessionToken: 'rotated-token' },
+                { sessionToken: 'rotated-token' as SessionToken },
                 expect.anything(),
             )
             expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
@@ -1274,7 +1275,7 @@ const ROWS: readonly Row[] = [
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
         },
-        call: changeAs(presented, { newPassword: 'new-password' }),
+        call: changeAs(presented as SessionToken | undefined, { newPassword: 'new-password' }),
         error: SESSION_REVOKED,
         after: () => {
             expect(validatePasswordMock).not.toHaveBeenCalled()
@@ -1372,7 +1373,7 @@ const ROWS: readonly Row[] = [
                 7n,
                 'stored-hash',
                 TOKEN,
-                { password: 'new-hash', sessionToken: 'rotated-token' },
+                { password: 'new-hash', sessionToken: 'rotated-token' as SessionToken },
                 expect.anything(),
             )
             expect(destroyAllSessionsMock).not.toHaveBeenCalled()
@@ -1414,7 +1415,7 @@ const ROWS: readonly Row[] = [
                 7n,
                 null,
                 TOKEN,
-                { password: 'new-hash', sessionToken: 'rotated-token' },
+                { password: 'new-hash', sessionToken: 'rotated-token' as SessionToken },
                 expect.anything(),
             )
         },
@@ -1552,7 +1553,7 @@ describe('authService · success payloads', () => {
         )
         expect(Result.isOk(result) && result.value).toEqual({
             status: 'success',
-            sessionToken: 'rotated-token',
+            sessionToken: 'rotated-token' as SessionToken,
         })
     })
 

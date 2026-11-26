@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,7 +23,7 @@ const userRepositoryMock = {
 }
 
 // The user token the request's session cookie presented (Auth.getPresentedUserToken).
-const PRESENTED_TOKEN = 'presented-session-token'
+const PRESENTED_TOKEN = 'presented-session-token' as SessionToken
 const SESSION_REVOKED_ERROR = {
     _tag: 'Unauthorized',
     message: 'Session has been revoked',
@@ -207,7 +208,7 @@ describe('authService', () => {
         userRepositoryMock.create.mockResolvedValue({
             id: 7n,
             email: 'user@example.com',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         sessionMock.destroySession.mockResolvedValue(undefined)
 
@@ -245,7 +246,7 @@ describe('authService', () => {
         userRepositoryMock.create.mockResolvedValue({
             id: 7n,
             email: 'user@example.com',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         sessionMock.destroySession.mockResolvedValue(undefined)
         authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
@@ -356,7 +357,10 @@ describe('authService', () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
             hashPasswordMock.mockResolvedValue('hashed')
             userRepositoryMock.findByEmail.mockResolvedValue(undefined)
-            userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 't' })
+            userRepositoryMock.create.mockResolvedValue({
+                id: 8n,
+                sessionToken: 't' as SessionToken,
+            })
             sessionMock.destroySession.mockResolvedValue(undefined)
 
             await register()
@@ -368,7 +372,10 @@ describe('authService', () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
             hashPasswordMock.mockResolvedValue('hashed')
             userRepositoryMock.findByEmail.mockResolvedValue(undefined)
-            userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 't' })
+            userRepositoryMock.create.mockResolvedValue({
+                id: 8n,
+                sessionToken: 't' as SessionToken,
+            })
             sessionMock.destroySession.mockResolvedValue(undefined)
 
             await register()
@@ -383,7 +390,10 @@ describe('authService', () => {
         it('takes as long for a taken address as for a new one', async () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
             slowHash()
-            userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 't' })
+            userRepositoryMock.create.mockResolvedValue({
+                id: 8n,
+                sessionToken: 't' as SessionToken,
+            })
             sessionMock.destroySession.mockResolvedValue(undefined)
             const { authService } = await loadAuthService()
 
@@ -452,7 +462,7 @@ describe('authService', () => {
             email: 'user@example.com',
             emailVerifiedAt: new Date('2026-05-30T00:00:00.000Z'),
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         authMock.login.mockResolvedValue(null)
@@ -487,7 +497,7 @@ describe('authService', () => {
             email: 'user@example.com',
             emailVerifiedAt: new Date('2026-05-30T00:00:00.000Z'),
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         const device = { publicId: 'p'.repeat(22), ip: '127.0.0.1', userAgent: 'UA' }
@@ -678,7 +688,7 @@ describe('authService', () => {
             email: 'user@example.com',
             emailVerifiedAt: new Date('2026-05-30T00:00:00.000Z'),
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(false)
 
@@ -712,7 +722,7 @@ describe('authService', () => {
             email: 'user@example.com',
             emailVerifiedAt: null,
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         }
         const credentials = { identifier: 'user@example.com', password: 'secret' }
         const login = async () => {
@@ -898,7 +908,7 @@ describe('authService', () => {
             email: 'user@example.com',
             emailVerifiedAt: null,
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
@@ -922,7 +932,11 @@ describe('authService', () => {
     it('renewSession logs the same user into a new session and returns its token', async () => {
         sessionMock.sessionInfo = {
             id: 'signed-in-session-id',
-            data: { userId: '7', userToken: 'user-session-token', csrfToken: 'x'.repeat(43) },
+            data: {
+                userId: '7',
+                userToken: 'user-session-token' as SessionToken,
+                csrfToken: 'x'.repeat(43),
+            },
         }
         authMock.login.mockImplementation(async () => {
             sessionMock.sessionInfo = {
@@ -967,7 +981,11 @@ describe('authService', () => {
     it('renewSession issues the new session under a rotated user token', async () => {
         sessionMock.sessionInfo = {
             id: 'signed-in-session-id',
-            data: { userId: '7', userToken: 'old-user-token', csrfToken: 'x'.repeat(43) },
+            data: {
+                userId: '7',
+                userToken: 'old-user-token' as SessionToken,
+                csrfToken: 'x'.repeat(43),
+            },
         }
         authMock.login.mockImplementation(async () => {
             sessionMock.sessionInfo = {
@@ -1244,7 +1262,7 @@ describe('authService', () => {
             userRepositoryMock.findById.mockResolvedValue({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'previous-session-token',
+                sessionToken: 'previous-session-token' as SessionToken,
             })
             validatePasswordMock.mockResolvedValue(true)
             hashPasswordMock.mockResolvedValue('new-hash')
@@ -1255,7 +1273,7 @@ describe('authService', () => {
             const result = await authService.changePassword(
                 uid(7),
                 { newPassword: 'new-secret' },
-                'previous-session-token',
+                'previous-session-token' as SessionToken,
                 sessionStillStored,
                 'asking-session',
                 testUserActor(),
@@ -1274,7 +1292,7 @@ describe('authService', () => {
             userRepositoryMock.findById.mockResolvedValue({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'previous-session-token',
+                sessionToken: 'previous-session-token' as SessionToken,
             })
             validatePasswordMock.mockResolvedValue(true)
             hashPasswordMock.mockResolvedValue('new-hash')
@@ -1285,7 +1303,7 @@ describe('authService', () => {
             await authService.changePassword(
                 uid(7),
                 { newPassword: 'new-secret' },
-                'previous-session-token',
+                'previous-session-token' as SessionToken,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -1299,7 +1317,7 @@ describe('authService', () => {
             userRepositoryMock.findById.mockResolvedValue({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'previous-session-token',
+                sessionToken: 'previous-session-token' as SessionToken,
             })
             validatePasswordMock.mockResolvedValue(true)
             hashPasswordMock.mockResolvedValue('new-hash')
@@ -1309,7 +1327,7 @@ describe('authService', () => {
             const result = await authService.changePassword(
                 uid(7),
                 { newPassword: 'new-secret' },
-                'previous-session-token',
+                'previous-session-token' as SessionToken,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -1381,7 +1399,7 @@ describe('authService', () => {
             userRepositoryMock.findById.mockResolvedValue({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'previous-session-token',
+                sessionToken: 'previous-session-token' as SessionToken,
             })
             validatePasswordMock.mockResolvedValue(true)
             hashPasswordMock.mockResolvedValue('new-hash')
@@ -1390,7 +1408,10 @@ describe('authService', () => {
         }
         // Not a default parameter: `change(undefined)` must present no token.
         const change = async (
-            ...args: [presented?: string | undefined, sessionAuth?: SessionAuthState | undefined]
+            ...args: [
+                presented?: SessionToken | undefined,
+                sessionAuth?: SessionAuthState | undefined,
+            ]
         ) => {
             const presented = args.length === 0 ? 'previous-session-token' : args[0]
             const sessionAuth = args.length < 2 ? FRESH_PASSWORD : args[1]
@@ -1398,7 +1419,7 @@ describe('authService', () => {
             return authService.changePassword(
                 uid(7),
                 { newPassword: 'new-secret' },
-                presented,
+                presented as SessionToken | undefined,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -1454,12 +1475,12 @@ describe('authService', () => {
             userRepositoryMock.findById.mockResolvedValueOnce({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'previous-session-token',
+                sessionToken: 'previous-session-token' as SessionToken,
             })
             userRepositoryMock.findById.mockResolvedValueOnce({
                 id: 7n,
                 password: 'hash-of-the-other-change',
-                sessionToken: 'token-of-the-other-change',
+                sessionToken: 'token-of-the-other-change' as SessionToken,
             })
 
             const result = await change()
@@ -1487,7 +1508,7 @@ describe('authService', () => {
             async (_name, sessionAuth) => {
                 arrangeUser()
 
-                const result = await change('previous-session-token', sessionAuth)
+                const result = await change('previous-session-token' as SessionToken, sessionAuth)
 
                 expect(Result.isError(result)).toBe(true)
                 if (Result.isError(result)) {
@@ -1521,7 +1542,7 @@ describe('authService', () => {
         ])('refuses %s with 401 session_revoked and writes nothing', async (_name, presented) => {
             arrangeUser()
 
-            const result = await change(presented)
+            const result = await change(presented as SessionToken | undefined)
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
@@ -1538,13 +1559,13 @@ describe('authService', () => {
             userRepositoryMock.findById.mockResolvedValueOnce({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'previous-session-token',
+                sessionToken: 'previous-session-token' as SessionToken,
             })
             // The re-read: same password, the token rotated by a logout-all elsewhere.
             userRepositoryMock.findById.mockResolvedValueOnce({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'rotated-elsewhere',
+                sessionToken: 'rotated-elsewhere' as SessionToken,
             })
 
             const result = await change()
@@ -1562,7 +1583,7 @@ describe('authService', () => {
             userRepositoryMock.findById.mockResolvedValueOnce({
                 id: 7n,
                 password: 'stored-hash',
-                sessionToken: 'previous-session-token',
+                sessionToken: 'previous-session-token' as SessionToken,
             })
             userRepositoryMock.findById.mockResolvedValueOnce(undefined)
 
@@ -1592,7 +1613,7 @@ describe('startEmailLink session guard (feat-096)', () => {
         const result = await authService.startEmailLink(
             uid(9),
             { email: 'phone-only@example.com' },
-            presented,
+            presented as SessionToken | undefined,
             sessionStillStored,
             FRESH_PASSWORD,
         )
@@ -1644,7 +1665,7 @@ describe('authService while Redis is unavailable', () => {
             email: 'user@example.com',
             emailVerifiedAt: new Date('2026-05-30T00:00:00.000Z'),
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
     }

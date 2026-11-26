@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import type { MfaTicketId } from '#app/domain/secrets.js'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MfaTicket as Ticket } from './mfa-ticket.js'
@@ -46,7 +47,26 @@ const { default: client, redisHealth } = (await import('#database/redis.js')) as
     default: Redis
     redisHealth: { stop(): void }
 }
-const { mfaTicketStore, MFA_MAX_FAILURES, newTicketId } = await import('./mfa-ticket.js')
+const {
+    mfaTicketStore: brandedTicketStore,
+    MFA_MAX_FAILURES,
+    newTicketId,
+} = await import('./mfa-ticket.js')
+
+// feat-265: the store takes branded ids (MfaTicketId, MfaReservationId…); this suite names them
+// with short literals, so it sees the store with its string parameters widened to string.
+type Widen<T> = T extends string
+    ? string
+    : T extends (infer E)[]
+      ? Widen<E>[]
+      : T extends object
+        ? { [K in keyof T]: Widen<T[K]> }
+        : T
+type Loose<F> = F extends (...args: infer A) => infer R
+    ? (...args: { [K in keyof A]: Widen<A[K]> }) => R
+    : F
+type LooseStore = { [K in keyof typeof brandedTicketStore]: Loose<(typeof brandedTicketStore)[K]> }
+const mfaTicketStore = brandedTicketStore as unknown as LooseStore
 const { passkeyTicketChallenges } = await import('./passkey-login-challenges.js')
 
 const admin = createTestRedis(PREFIX)
@@ -87,7 +107,7 @@ const plan = {
     createdAtMs: NOW,
 }
 
-const open = async (): Promise<string> => {
+const open = async (): Promise<MfaTicketId> => {
     const id = newTicketId()
     await mfaTicketStore.create(id, ticket(), 300)
     return id

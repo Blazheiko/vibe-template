@@ -1,4 +1,5 @@
 import type { MyWebSocket } from '#vendor/types/types.js'
+import type { SessionToken } from '#app/domain/secrets.js'
 
 // feat-107: each connection keeps its own ip, user agent and app type, so summaries never read
 // ws.getUserData() from a stored socket (it throws once the socket has closed).
@@ -8,7 +9,7 @@ interface StoredConnection {
     userAgent: string
     appType: 'web' | 'pwa'
     sessionId: string
-    userToken: string | undefined
+    userToken: SessionToken | undefined
 }
 
 interface UserConnections {
@@ -28,7 +29,7 @@ export interface ConnectionMeta {
     appType: 'web' | 'pwa'
     /** The session the connection was opened from, and the users.session_token it carried. */
     sessionId: string
-    userToken: string | undefined
+    userToken: SessionToken | undefined
 }
 
 export interface ListedConnection {
@@ -36,7 +37,7 @@ export interface ListedConnection {
     uuid: string
     ws: MyWebSocket
     sessionId: string
-    userToken: string | undefined
+    userToken: SessionToken | undefined
 }
 
 function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa' {
@@ -56,7 +57,7 @@ interface ConnectingEntry {
     userId: string
     sessionId: string
     /** The users.session_token the connection's session carries (a recovery's close, Р8). */
-    userToken: string | undefined
+    userToken: SessionToken | undefined
     revoked: boolean
     // feat-243 (review 2026-11-21): a role change was signalled while the connection was being
     // opened; the role it read may predate it, so it reads the role again before registering.
@@ -72,7 +73,7 @@ const beginConnecting = (
     userId: string,
     uuid: string,
     sessionId: string,
-    userToken?: string,
+    userToken?: SessionToken,
 ): (() => boolean) => {
     const entry: ConnectingEntry = {
         userId,
@@ -98,7 +99,7 @@ const revokeConnecting = (
     // feat-221: a password change spares the session that asked for it.
     exceptSessionId?: string,
     // Р8: a recovery sign-in closes only the sessions of the token it rotated.
-    userToken?: string,
+    userToken?: SessionToken,
 ): number => {
     let marked = 0
     for (const entry of connecting.values()) {

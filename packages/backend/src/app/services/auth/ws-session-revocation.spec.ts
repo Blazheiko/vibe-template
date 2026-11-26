@@ -1,4 +1,5 @@
 import type { MyWebSocket } from '#vendor/types/types.js'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const listConnections = vi.hoisted(() => vi.fn())
@@ -27,7 +28,7 @@ interface FakeConnection {
     userId: string
     uuid: string
     sessionId: string
-    userToken: string | undefined
+    userToken: SessionToken | undefined
     ws: MyWebSocket
     send: ReturnType<typeof vi.fn>
     end: ReturnType<typeof vi.fn>
@@ -37,8 +38,9 @@ const connection = (
     userId: string,
     uuid: string,
     sessionId: string,
-    userToken: string | undefined,
+    token: string | undefined,
 ): FakeConnection => {
+    const userToken = token as SessionToken | undefined
     const send = vi.fn()
     const end = vi.fn()
     const ws = {
@@ -125,7 +127,7 @@ describe('closeUserConnections', () => {
         expect(
             wsSessionRevocation.closeUserConnections('1', {
                 exceptSessionId: 's9',
-                userToken: 'old',
+                userToken: 'old' as SessionToken,
             }),
         ).toBe(2)
 

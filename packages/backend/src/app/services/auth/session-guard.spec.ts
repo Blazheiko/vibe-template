@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -28,7 +29,7 @@ describe('withCurrentSession', () => {
         lockById.mockResolvedValue(user)
         const work = vi.fn().mockResolvedValue(Result.ok('done'))
 
-        const result = await withCurrentSession(uid(7), 'current', work)
+        const result = await withCurrentSession(uid(7), 'current' as SessionToken, work)
 
         expect(result).toEqual(Result.ok('done'))
         expect(lockById).toHaveBeenCalledWith(7n, TX)
@@ -42,7 +43,7 @@ describe('withCurrentSession', () => {
         lockById.mockResolvedValue(user)
         const work = vi.fn()
 
-        const result = await withCurrentSession(uid(7), 'current', work)
+        const result = await withCurrentSession(uid(7), 'current' as SessionToken, work)
 
         expect(Result.isError(result) && result.error).toMatchObject({
             reason: 'session_revoked',

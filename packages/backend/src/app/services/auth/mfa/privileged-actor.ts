@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { roleHasPermission, type Permission } from 'shared/access'
 import type { AcceptedProof, SessionAuthState } from 'shared/mfa'
 
@@ -28,7 +29,7 @@ export interface PrivilegedActorCheck {
     /** The actor's row, locked FOR UPDATE in the caller's transaction (undefined: it is gone). */
     actorRow: UserRow | undefined
     /** The session token the request presented (`Auth.getPresentedUserToken`). */
-    presentedSessionToken: string | undefined
+    presentedSessionToken: SessionToken | undefined
     /**
      * Whether the record of the request's session still exists (`context.session.isStored()`).
      * Required for a user actor: undefined is refused as a revoked session.

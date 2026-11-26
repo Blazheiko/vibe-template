@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -197,7 +198,7 @@ describe('authService phone foundation', () => {
             phone: '+14155550123',
             name: 'Jane',
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         authMock.login.mockResolvedValue(true)
@@ -393,7 +394,7 @@ describe('authService phone foundation', () => {
             phone: '+14155550123',
             name: 'Existing User',
             password: 'hashed-password',
-            sessionToken: 'existing-session',
+            sessionToken: 'existing-session' as SessionToken,
         })
         smsAuthChallengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(undefined)
         smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow.mockResolvedValue(1)
@@ -554,7 +555,7 @@ describe('authService phone foundation', () => {
             email: null,
             phone: '+14155550123',
             name: 'Phone User',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         smsAuthChallengeRepositoryMock.markInvalidated.mockResolvedValue({
             id: 'challenge-1',
@@ -627,7 +628,7 @@ describe('authService phone foundation', () => {
             email: 'user@example.com',
             phone: null,
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
@@ -688,7 +689,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
                 sessionAuth: FRESH_PASSWORD,
             },
@@ -709,7 +710,7 @@ describe('authService phone foundation', () => {
             email: 'user@example.com',
             phone: null,
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
@@ -770,7 +771,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: () => Promise.resolve(false),
                 sessionAuth: FRESH_PASSWORD,
             },
@@ -794,7 +795,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: null,
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
                 sessionAuth: FRESH_PASSWORD,
             },
@@ -858,7 +859,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
             },
             testUserActor(),
@@ -903,7 +904,7 @@ describe('authService phone foundation', () => {
             phone: null,
             name: 'Jane',
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
         smsAuthChallengeRepositoryMock.markConfirmed.mockResolvedValue({
@@ -916,7 +917,7 @@ describe('authService phone foundation', () => {
             phone: '+14155550123',
             name: 'Jane',
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
             createdAt: new Date('2026-05-15T10:00:00.000Z'),
             updatedAt: new Date('2026-05-15T10:01:00.000Z'),
             emailVerifiedAt: null,
@@ -936,7 +937,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
             },
             testUserActor(),
@@ -985,7 +986,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
             },
             testUserActor(),
@@ -1023,7 +1024,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
             },
             testUserActor(),
@@ -1045,7 +1046,7 @@ describe('authService phone foundation', () => {
             email: 'user@example.com',
             phone: null,
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
@@ -1075,7 +1076,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
                 sessionAuth: FRESH_PASSWORD,
             },
@@ -1103,7 +1104,7 @@ describe('phone linking session guard (feat-096)', () => {
         phone: null,
         name: 'Jane',
         password: 'hashed-password',
-        sessionToken: 'session-token',
+        sessionToken: 'session-token' as SessionToken,
     }
     const arrangeConfirm = (): void => {
         smsAuthChallengeRepositoryMock.findById.mockResolvedValue({
@@ -1124,7 +1125,7 @@ describe('phone linking session guard (feat-096)', () => {
             confirmedAt: new Date(),
         })
     }
-    const confirm = async (presentedSessionToken: string | undefined) => {
+    const confirm = async (presentedSessionToken: SessionToken | undefined) => {
         const { authService } = await loadAuthService()
         return authService.confirmPhoneLink(
             uid(7),
@@ -1153,7 +1154,7 @@ describe('phone linking session guard (feat-096)', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: presented,
+                presentedSessionToken: presented as SessionToken | undefined,
                 sessionStored: sessionStillStored,
                 sessionAuth: FRESH_PASSWORD,
             },
@@ -1173,7 +1174,7 @@ describe('phone linking session guard (feat-096)', () => {
     ])('confirmPhoneLink refuses %s with 401 and links nothing', async (_name, presented) => {
         arrangeConfirm()
 
-        const result = await confirm(presented)
+        const result = await confirm(presented as SessionToken | undefined)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
@@ -1185,9 +1186,12 @@ describe('phone linking session guard (feat-096)', () => {
     // feat-235: the decisive check is on the locked row, before the code is confirmed.
     it('confirmPhoneLink answers 401 when the session is revoked before the lock', async () => {
         arrangeConfirm()
-        userRepositoryMock.lockById.mockResolvedValueOnce({ ...owner, sessionToken: 'rotated' })
+        userRepositoryMock.lockById.mockResolvedValueOnce({
+            ...owner,
+            sessionToken: 'rotated' as SessionToken,
+        })
 
-        const result = await confirm('session-token')
+        const result = await confirm('session-token' as SessionToken)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
@@ -1238,7 +1242,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
             email: 'user@example.com',
             phone: null,
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         const { authService } = await loadAuthService()
@@ -1250,7 +1254,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
                 {
                     ipAddress: '127.0.0.1',
                     sessionId: 'session-id',
-                    presentedSessionToken: 'session-token',
+                    presentedSessionToken: 'session-token' as SessionToken,
                     sessionStored: sessionStillStored,
                     sessionAuth: FRESH_PASSWORD,
                 },
@@ -1272,7 +1276,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
                 {
                     ipAddress: '127.0.0.1',
                     sessionId: 'session-id',
-                    presentedSessionToken: 'session-token',
+                    presentedSessionToken: 'session-token' as SessionToken,
                     sessionStored: sessionStillStored,
                 },
                 testUserActor(),
@@ -1398,7 +1402,7 @@ describe('login throttle', () => {
             phone: '+14155550123',
             name: 'Jane',
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         validatePasswordMock.mockResolvedValue(true)
         authMock.login.mockResolvedValue(true)
@@ -1487,7 +1491,7 @@ describe('phone writes losing the race to the unique index', () => {
             phone: null,
             name: 'Jane',
             password: 'hashed-password',
-            sessionToken: 'session-token',
+            sessionToken: 'session-token' as SessionToken,
         })
         userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
         smsAuthChallengeRepositoryMock.markConfirmed.mockResolvedValue({
@@ -1502,7 +1506,7 @@ describe('phone writes losing the race to the unique index', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
-                presentedSessionToken: 'session-token',
+                presentedSessionToken: 'session-token' as SessionToken,
                 sessionStored: sessionStillStored,
             },
             testUserActor(),

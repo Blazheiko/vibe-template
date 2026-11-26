@@ -1,4 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { parsePushSubscriptionId, type PushSubscriptionId } from '#app/domain/ids.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { pushSubscriptionContracts } from 'shared/contracts'
@@ -82,7 +83,7 @@ export default {
         const result = await pushSubscriptionService.createSubscription(
             userId,
             payload,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             context.httpData.ip ?? null,
         )
         return respond(context, result, (value) => ({
@@ -128,7 +129,7 @@ export default {
             userId,
             subscriptionId,
             payload,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
         )
         return respond(context, result, (value) => ({
             status: 'success',

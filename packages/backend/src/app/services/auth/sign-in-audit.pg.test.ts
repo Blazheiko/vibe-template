@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
+import type { TokenHash } from '#app/domain/secrets.js'
+import type { OtpCode, SessionToken } from '#app/domain/secrets.js'
 import type { OAuthAccountId, OneTimeTokenRowId } from '#app/domain/ids.js'
 
 import { Result } from 'better-result'
@@ -78,7 +80,8 @@ vi.mock('arctic', () => {
     }
 })
 
-const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex')
+const sha256 = (value: string): TokenHash =>
+    createHash('sha256').update(value).digest('hex') as TokenHash
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
 // feat-245 (rows 6 and 8 of Р3): the session proved the password through POST /auth/reauth.
 const freshPassword = (): SessionAuthState => ({
@@ -89,7 +92,7 @@ const freshPassword = (): SessionAuthState => ({
     verified: { pwd: new Date().toISOString() },
 })
 const PASSWORD = 'current-password-123'
-const CODE = '123456'
+const CODE = '123456' as OtpCode
 
 describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -263,7 +266,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     // ─── mass revocation of sessions ─────────────────────────────────────────────────────────
 
     const logoutAll = (
-        user: { id: UserId; sessionToken: string },
+        user: { id: UserId; sessionToken: SessionToken },
         actor = testAdminActor(user.id),
     ) =>
         authService.logoutAll(
@@ -327,7 +330,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         it('a revoked session writes nothing', async () => {
             const user = await insertUser({ email: address('logout-all-stale'), verified: true })
 
-            const result = await logoutAll({ ...user, sessionToken: 'stale' })
+            const result = await logoutAll({ ...user, sessionToken: 'stale' as SessionToken })
 
             expect(result.isErr()).toBe(true)
             expect(await eventsOf(user.id)).toEqual([])
@@ -336,7 +339,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
 
     describe('end the other sessions', () => {
         const revokeOthers = (
-            user: { id: UserId; sessionToken: string },
+            user: { id: UserId; sessionToken: SessionToken },
             actor = testAdminActor(),
         ) =>
             sessionListService.revokeOthers({
@@ -371,7 +374,10 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     })
 
     describe('change password', () => {
-        const change = (user: { id: UserId; sessionToken: string }, actor = testAdminActor()) =>
+        const change = (
+            user: { id: UserId; sessionToken: SessionToken },
+            actor = testAdminActor(),
+        ) =>
             authService.changePassword(
                 user.id,
                 { newPassword: 'another-password-456' },
@@ -721,7 +727,11 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
             })
             return { user, raw }
         }
-        const open = (user: { id: UserId; sessionToken: string }, raw: string, req = request()) =>
+        const open = (
+            user: { id: UserId; sessionToken: SessionToken },
+            raw: string,
+            req = request(),
+        ) =>
             emailVerificationService.verifyEmail(
                 raw,
                 { ipAddress: '127.0.0.1' },
@@ -776,7 +786,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
             return { user, link }
         }
         const unlink = (
-            user: { id: UserId; sessionToken: string },
+            user: { id: UserId; sessionToken: SessionToken },
             linkId: OAuthAccountId,
             actor = testAdminActor(user.id),
         ) =>

@@ -1,4 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { oauthContracts } from 'shared/contracts'
 import {
@@ -245,7 +246,7 @@ export default {
         }
         const result = await oauthService.resendFirstEmailLink(
             userId,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             () => context.session.isStored(),
         )
         return respond(context, result, (value) => ({ status: 'success', message: value.message }))

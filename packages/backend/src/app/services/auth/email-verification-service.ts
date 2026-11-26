@@ -1,4 +1,5 @@
 import appConfig from '#config/app.js'
+import { rawTokenOf, type SessionToken } from '#app/domain/secrets.js'
 import logger from '#logger'
 import {
     emailLinkVerificationRepository,
@@ -200,7 +201,7 @@ export const emailVerificationService = {
         requestMeta: { ipAddress: string },
         requester: {
             userId: UserId | null
-            presentedSessionToken: string | undefined
+            presentedSessionToken: SessionToken | undefined
             password?: string
         },
         /** feat-235: the request, for the audit event of an e-mail link. */
@@ -225,7 +226,7 @@ export const emailVerificationService = {
 
         const verificationResult = await findUsableToken(
             emailVerificationRepository,
-            normalizedToken,
+            rawTokenOf(normalizedToken),
             {
                 used: usedMessage,
                 expired: expiredMessage,
@@ -239,7 +240,7 @@ export const emailVerificationService = {
         if (verification === undefined) {
             const linkVerificationResult = await findUsableToken(
                 emailLinkVerificationRepository,
-                normalizedToken,
+                rawTokenOf(normalizedToken),
                 {
                     used: usedMessage,
                     expired: expiredMessage,
@@ -455,7 +456,7 @@ export const emailVerificationService = {
     async sendLinkVerificationEmail(
         userId: UserId,
         targetEmail: string,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
     ): Promise<AppResult<{ message: string }>> {
         const issued = await issueTokenLocked(emailLinkVerificationRepository, {
             userId,

@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
@@ -61,7 +62,7 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
 
     interface TestUser {
         id: UserId
-        sessionToken: string
+        sessionToken: SessionToken
     }
     const newUser = async (
         fields: { verified?: boolean; password?: string | null } = {},

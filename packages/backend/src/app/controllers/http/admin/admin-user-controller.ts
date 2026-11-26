@@ -1,4 +1,5 @@
 import { adminUserService } from '#app/services/admin/admin-user-service.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
 import { badRequest } from '#app/services/shared/errors.js'
 import type { HttpContext } from '#vendor/types/types.js'
@@ -74,7 +75,7 @@ export default {
             targetUserId,
             role,
             sessionAuth: context.session.sessionInfo?.data.auth,
-            presentedSessionToken: context.auth.getPresentedUserToken(),
+            presentedSessionToken: presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             sessionStored: () => context.session.isStored(),
         })
         return respond(context, result, (value) => ({
@@ -99,7 +100,7 @@ export default {
             targetUserId,
             reason: getTypedPayload(context).reason,
             sessionAuth: context.session.sessionInfo?.data.auth,
-            presentedSessionToken: context.auth.getPresentedUserToken(),
+            presentedSessionToken: presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             sessionStored: () => context.session.isStored(),
         })
         return respond(context, result, (value) => ({

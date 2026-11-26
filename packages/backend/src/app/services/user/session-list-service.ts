@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { nanoid } from 'nanoid'
+import { type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import { CURRENT_SESSION_REASON } from 'shared/errors'
 import type { SessionView } from 'shared'
 
@@ -167,7 +167,7 @@ export const sessionListService = {
      */
     async revokeOthers(input: {
         userId: UserId
-        presentedSessionToken: string | undefined
+        presentedSessionToken: SessionToken | undefined
         requestingSessionId: string | undefined
         sessionStored: SessionStillStored
         /** feat-235: who ends them: the signed-in user of the request. */
@@ -178,7 +178,7 @@ export const sessionListService = {
         if (presented === undefined) return Result.err(sessionRevoked())
         if (!(await input.sessionStored())) return Result.err(sessionRevoked())
 
-        const rotatedSessionToken = nanoid()
+        const rotatedSessionToken = newSessionToken()
         const rotated = await withTransaction(async (tx) => {
             const done = await userRepository.updateIfSessionToken(
                 userId,

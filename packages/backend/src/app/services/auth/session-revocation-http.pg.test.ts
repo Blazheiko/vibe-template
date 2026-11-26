@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { TokenHash } from '#app/domain/secrets.js'
 
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
@@ -438,7 +439,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
                 userId: user.id,
                 // feat-097: the address the link was mailed to.
                 targetEmail: user.email,
-                tokenHash: createHash('sha256').update(rawToken).digest('hex'),
+                tokenHash: createHash('sha256').update(rawToken).digest('hex') as TokenHash,
                 expiresAt: new Date(Date.now() + 60_000),
             })
             const visitor = new Browser()
@@ -481,7 +482,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
                 userId: user.id,
                 // feat-097: the address the link was mailed to.
                 targetEmail: user.email,
-                tokenHash: createHash('sha256').update(rawToken).digest('hex'),
+                tokenHash: createHash('sha256').update(rawToken).digest('hex') as TokenHash,
                 expiresAt: new Date(Date.now() + 60_000),
             })
             const first = new Browser()

@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Role } from 'shared/access'
@@ -91,7 +92,7 @@ describe.skipIf(!hasPg)(
 
         interface TestUser {
             id: UserId
-            sessionToken: string
+            sessionToken: SessionToken
         }
 
         /** A verified account with a password and the given factors. */

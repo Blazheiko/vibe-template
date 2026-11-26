@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,7 +35,7 @@ vi.mock('#app/services/communication/user-event-bus.js', () => ({
 
 const { accountService } = await import('./account-service.js')
 
-const TOKEN = 'presented-token'
+const TOKEN = 'presented-token' as SessionToken
 const stored = () => Promise.resolve(true)
 
 const row = (fields: Record<string, unknown> = {}) => ({

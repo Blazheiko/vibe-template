@@ -3,6 +3,7 @@ import { sessionCheckDb } from '#database/session-check-db.js'
 import type { DbExecutor, DbTransaction } from '../transaction.js'
 import { users } from '#database/schema.js'
 import type { UserId } from '#app/domain/ids.js'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
@@ -94,7 +95,7 @@ export interface IUserRepository {
      */
     updateIfSessionToken(
         id: UserId,
-        expectedSessionToken: string,
+        expectedSessionToken: SessionToken,
         data: UserUpdate,
         executor?: DbExecutor,
     ): Promise<UserRow | undefined>
@@ -104,7 +105,7 @@ export interface IUserRepository {
      */
     updateNameIfSessionToken(
         id: UserId,
-        expectedSessionToken: string,
+        expectedSessionToken: SessionToken,
         name: string,
         tx: DbExecutor,
     ): Promise<{ name: string } | undefined>
@@ -115,7 +116,7 @@ export interface IUserRepository {
      */
     shareIfSessionToken(
         id: UserId,
-        expectedSessionToken: string,
+        expectedSessionToken: SessionToken,
         tx: DbExecutor,
     ): Promise<{ name: string } | undefined>
     /**
@@ -126,7 +127,7 @@ export interface IUserRepository {
      */
     replaceAvatarIfSessionToken(
         id: UserId,
-        expectedSessionToken: string,
+        expectedSessionToken: SessionToken,
         avatar: string | null,
     ): Promise<{ user: UserRow; previousAvatar: string | null } | undefined>
     /**
@@ -154,8 +155,8 @@ export interface IUserRepository {
     changePasswordIfCurrent(
         id: UserId,
         currentPassword: string | null,
-        expectedSessionToken: string,
-        data: { password: string; sessionToken: string },
+        expectedSessionToken: SessionToken,
+        data: { password: string; sessionToken: SessionToken },
         executor?: DbExecutor,
     ): Promise<UserRow | undefined>
     delete(id: UserId): Promise<boolean>

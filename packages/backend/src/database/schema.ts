@@ -40,6 +40,15 @@ import type {
     UserId,
     UserOnlineId,
 } from './ids.js'
+// A relative import (drizzle-kit loads the schema without the # aliases); app/domain has none.
+import {
+    newSessionToken,
+    type OtpHash,
+    type RecoveryCodeHash,
+    type SessionBindingHash,
+    type SessionToken,
+    type TokenHash,
+} from '../app/domain/secrets.js'
 import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
@@ -105,9 +114,10 @@ export const users = pgTable(
         // the first passkey, never the user id or the email. NULL until then.
         webauthnUserHandle: bytea('webauthn_user_handle').unique(),
         sessionToken: varchar('session_token', { length: 24 })
+            .$type<SessionToken>()
             .notNull()
             .unique()
-            .$defaultFn(() => nanoid()),
+            .$defaultFn(newSessionToken),
         createdAt: timestamp('created_at').notNull().defaultNow(),
         updatedAt: timestamp('updated_at')
             .notNull()
@@ -326,7 +336,7 @@ export const emailVerifications = pgTable(
             .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
-        tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+        tokenHash: varchar('token_hash', { length: 64 }).$type<TokenHash>().notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         usedAt: timestamp('used_at'),
         createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -347,7 +357,7 @@ export const emailLinkVerifications = pgTable(
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         targetEmail: varchar('target_email', { length: 255 }).notNull(),
-        tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+        tokenHash: varchar('token_hash', { length: 64 }).$type<TokenHash>().notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         usedAt: timestamp('used_at'),
         createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -370,7 +380,7 @@ export const passwordResetTokens = pgTable(
         // The address the link was mailed to (feat-097): a reset that claims an unverified
         // account proves this address, and only while it is still the account's one.
         targetEmail: varchar('target_email', { length: 255 }),
-        tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+        tokenHash: varchar('token_hash', { length: 64 }).$type<TokenHash>().notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         usedAt: timestamp('used_at'),
         createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -391,7 +401,7 @@ export const smsAuthChallenges = pgTable(
             .$defaultFn(() => nanoid()),
         flow: smsAuthChallengeFlowEnum('flow').notNull(),
         phone: varchar('phone', { length: 20 }).notNull(),
-        codeHash: varchar('code_hash', { length: 255 }).notNull(),
+        codeHash: varchar('code_hash', { length: 255 }).$type<OtpHash>().notNull(),
         providerRequestId: varchar('provider_request_id', { length: 100 }),
         metadata: jsonb('metadata').$type<Record<string, unknown> | null>().default(null),
         attemptCount: integer('attempt_count').notNull().default(0),
@@ -460,8 +470,10 @@ export const oauthLinkVerifications = pgTable(
         providerAvatar: varchar('provider_avatar', { length: 500 }),
         // The account's address when the link was issued: confirmed only while it is unchanged.
         targetEmail: varchar('target_email', { length: 255 }).notNull(),
-        sessionBindingHash: varchar('session_binding_hash', { length: 64 }).notNull(),
-        tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+        sessionBindingHash: varchar('session_binding_hash', { length: 64 })
+            .$type<SessionBindingHash>()
+            .notNull(),
+        tokenHash: varchar('token_hash', { length: 64 }).$type<TokenHash>().notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         usedAt: timestamp('used_at'),
         createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -686,7 +698,7 @@ export const mfaRecoveryCodes = pgTable(
             .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
-        codeHash: varchar('code_hash', { length: 64 }).notNull(),
+        codeHash: varchar('code_hash', { length: 64 }).$type<RecoveryCodeHash>().notNull(),
         batchId: varchar('batch_id', { length: 21 }).notNull(),
         usedAt: timestamp('used_at'),
         createdAt: timestamp('created_at').notNull().defaultNow(),

@@ -1,4 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
@@ -21,7 +22,7 @@ import { type UserId, parsePasskeyId } from '#app/domain/ids.js'
 const requestOf = (context: HttpContext, userId: UserId): PasskeyRequest => ({
     userId,
     session: context.session,
-    presentedSessionToken: context.auth.getPresentedUserToken(),
+    presentedSessionToken: presentedSessionTokenOf(context.auth.getPresentedUserToken()),
     actor: auditActorFrom(context),
 })
 

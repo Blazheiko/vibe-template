@@ -1,4 +1,5 @@
 import { inArray } from 'drizzle-orm'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { Result } from 'better-result'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -89,7 +90,7 @@ describe.skipIf(!hasPg)('SMS budget of register and link phone starts on Postgre
         await pool.end()
     })
 
-    const newUser = async (): Promise<{ id: UserId; sessionToken: string }> => {
+    const newUser = async (): Promise<{ id: UserId; sessionToken: SessionToken }> => {
         const [row] = await db
             .insert(users)
             .values({ name: 'Budget Test', password: 'stored-hash' })

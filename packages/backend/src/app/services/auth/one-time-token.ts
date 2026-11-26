@@ -1,22 +1,19 @@
-import { createHash, randomBytes } from 'node:crypto'
 import { Result } from 'better-result'
 import { userRepository, withTransaction, type ITokenRepository } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import type { UserRow } from '#app/repositories/index.js'
 import { notFound, type AppError, type AppResult } from '#app/services/shared/errors.js'
 import type { UserId, OneTimeTokenRowId } from '#app/domain/ids.js'
+import { hashToken, newRawToken, type RawToken } from '#app/domain/secrets.js'
 
 // The password reset, e-mail verification and e-mail linking tokens are one kind of thing: a
 // random secret mailed to the user, kept as its hash, valid until it expires, used once. What
 // differs is only what using it does and the words of the answers.
 
-export function hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex')
-}
+export { hashToken } from '#app/domain/secrets.js'
 
-export function createToken(): string {
-    return randomBytes(32).toString('base64url')
-}
+/** A fresh one-time token: 32 random bytes, base64url. */
+export const createToken = (): RawToken => newRawToken()
 
 interface TokenRow {
     id: OneTimeTokenRowId
@@ -52,7 +49,7 @@ export async function issueTokenLocked<TRow, TInsert extends { userId: UserId }>
         /** Which earlier tokens to retire; by default every pending one of the user. */
         invalidatePending?: (tx: DbTransaction) => Promise<number>
     },
-): Promise<AppResult<{ rawToken: string; user: UserRow }>> {
+): Promise<AppResult<{ rawToken: RawToken; user: UserRow }>> {
     return await withTransaction(async (tx) => {
         const user = await userRepository.lockById(options.userId, tx)
         if (user === undefined) {
@@ -95,7 +92,7 @@ export async function issueTokenLocked<TRow, TInsert extends { userId: UserId }>
  */
 export async function findUsableToken<TRow extends TokenRow, TInsert>(
     repository: ITokenRepository<TRow, TInsert>,
-    secret: string,
+    secret: RawToken,
     answers: {
         used: AppError
         expired: AppError

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
@@ -140,7 +141,7 @@ type Service = typeof authService
 
 const IP = { ipAddress: '203.0.113.9' }
 /** The user token the request presented; current for the user above (feat-096). */
-const TOKEN = 'presented-token'
+const TOKEN = 'presented-token' as SessionToken
 const PHONE = '+380501234567'
 /** feat-245 (row 7 of Р3): the session proved the password through POST /auth/reauth just now. */
 const FRESH_PASSWORD: SessionAuthState = {

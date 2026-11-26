@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { OtpCode, TokenHash } from '#app/domain/secrets.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -35,7 +36,7 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security: vi.fn() },
 }))
 
-const CODE = '123456'
+const CODE = '123456' as OtpCode
 const NEW_PASSWORD = 'new-password-123'
 
 describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async () => {
@@ -145,7 +146,7 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
     it('a wrong code keeps its spent try and changes nothing else', async () => {
         const { user, challenge } = await arrange()
 
-        const result = await complete(challenge.id, '000000')
+        const result = await complete(challenge.id, '000000' as OtpCode)
 
         expect(result.isErr() && appErrorMessage(result.error)).toBe('Invalid verification code')
         const row = await challengeRow(challenge.id)
@@ -236,7 +237,7 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
             .insert(passwordResetTokens)
             .values({
                 userId: user.id,
-                tokenHash: `reset-tx-${run}-${String(counter)}`,
+                tokenHash: `reset-tx-${run}-${String(counter)}` as TokenHash,
                 expiresAt: new Date(Date.now() + 60 * 60_000),
             })
             .returning()

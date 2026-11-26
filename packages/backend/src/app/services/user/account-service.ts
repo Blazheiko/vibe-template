@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import type { Profile } from 'shared'
 import type { UpdateProfileInput } from 'shared/schemas'
 import { isAllowedTimeZone } from 'shared/utils'
@@ -63,7 +64,7 @@ export const accountService = {
     async updateProfile(
         userId: UserId,
         body: UpdateProfileInput,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
         sessionStored: SessionStillStored,
     ): Promise<AppResult<Profile>> {
         // One rule for writing and reading (Р3): a zone this runtime does not know is refused.

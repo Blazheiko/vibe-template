@@ -1,4 +1,5 @@
 import { isServerRejection } from '#app/repositories/db-errors.js'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { randomUUID } from 'node:crypto'
 import type { UploadedFile } from '#vendor/types/types.js'
 import { Result } from 'better-result'
@@ -75,7 +76,7 @@ export const avatarService = {
     async uploadAvatar(
         userId: UserId,
         file: UploadedFile | undefined,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
     ): Promise<AppResult<{ user: AvatarUserPayload }>> {
         if (file === undefined) {
             return Result.err(badRequest('No file uploaded'))
@@ -142,7 +143,7 @@ export const avatarService = {
 
     async deleteAvatar(
         userId: UserId,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
     ): Promise<AppResult<{ user: AvatarUserPayload }>> {
         const user = await userRepository.findById(userId)
         if (user === undefined) {

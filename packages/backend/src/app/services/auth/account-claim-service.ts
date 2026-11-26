@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid'
+import { type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import logger from '#logger'
 import {
     emailLinkVerificationRepository,
@@ -46,7 +46,7 @@ export { invalidatePendingPhoneChallenges }
 // cleanup. A failure is logged and must not fail an operation that has been committed.
 // feat-195: the WebSocket connections opened from those sessions are closed first.
 export async function destroySessionsQuietly(
-    previousSessionToken: string,
+    previousSessionToken: SessionToken,
     userId: UserId,
 ): Promise<void> {
     wsSessionRevocation.closeUserConnections(toEntityId(userId))
@@ -86,7 +86,7 @@ export interface ClaimOutcome {
     claimed: boolean
     user: UserRow
     /** The token whose sessions are revoked by the claim (destroy them after commit). */
-    previousSessionToken: string
+    previousSessionToken: SessionToken
     /** Set when `claimed`. */
     effects: ClaimEffects | null
 }
@@ -122,7 +122,7 @@ export async function claimLocked(
         }
         const updated = await userRepository.update(
             user.id,
-            { password: options.newPasswordHash, sessionToken: nanoid() },
+            { password: options.newPasswordHash, sessionToken: newSessionToken() },
             tx,
         )
         if (updated === undefined) throw new Error('User disappeared during the claim')
@@ -140,7 +140,7 @@ export async function claimLocked(
             emailVerifiedAt: new Date(),
             password: options.newPasswordHash ?? null,
             phone: null,
-            sessionToken: nanoid(),
+            sessionToken: newSessionToken(),
         },
         tx,
     )

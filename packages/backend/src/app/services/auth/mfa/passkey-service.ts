@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { nanoid } from 'nanoid'
 import {
     MFA_REASONS,
@@ -62,7 +63,7 @@ const REGISTRATION_KEYS = Object.values(PASSKEY_REGISTRATION_KEYS)
 export interface PasskeyRequest {
     userId: UserId
     session: Session
-    presentedSessionToken: string | undefined
+    presentedSessionToken: SessionToken | undefined
     actor: UserAuditActor
     now?: number
 }

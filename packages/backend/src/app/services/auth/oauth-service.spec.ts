@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import type * as Arctic from 'arctic'
 import { Result } from 'better-result'
@@ -1837,7 +1838,7 @@ describe('oauthService.confirmLink', () => {
 
 // feat-097: the link that confirms the first address of an account without one, sent again.
 describe('oauthService.resendFirstEmailLink', () => {
-    const resend = async (presented: string | undefined) => {
+    const resend = async (presented: SessionToken | undefined) => {
         const { oauthService } = await loadOauthService()
         return oauthService.resendFirstEmailLink(uid(7), presented, sessionStillStored)
     }
@@ -1848,7 +1849,7 @@ describe('oauthService.resendFirstEmailLink', () => {
     ])('%s: 400 no_pending_email, nothing sent', async (_n, accounts) => {
         oauthAccountRepositoryMock.findByUserId.mockResolvedValue(accounts)
 
-        const result = await resend('presented-token')
+        const result = await resend('presented-token' as SessionToken)
 
         expectError(result, {
             _tag: 'BadRequest',
@@ -1865,7 +1866,7 @@ describe('oauthService.resendFirstEmailLink', () => {
         ])
         userRepositoryMock.emailExistsForOtherUser.mockResolvedValue(DEVICE)
 
-        const result = await resend('presented-token')
+        const result = await resend('presented-token' as SessionToken)
 
         expectError(result, {
             _tag: 'Conflict',
@@ -1889,7 +1890,7 @@ describe('oauthService.resendFirstEmailLink', () => {
             Result.ok({ message: 'Verification email sent' }),
         )
 
-        const result = await resend('presented-token')
+        const result = await resend('presented-token' as SessionToken)
 
         expect(Result.isOk(result) && result.value).toEqual({ message: 'Verification email sent' })
         expect(sendLinkVerificationEmailMock).toHaveBeenCalledWith(
@@ -1910,7 +1911,7 @@ describe('oauthService.resendFirstEmailLink', () => {
         ])
         spendMailBudget()
 
-        const result = await resend('presented-token')
+        const result = await resend('presented-token' as SessionToken)
 
         expectError(result, THROTTLED)
         expect(userRepositoryMock.emailExistsForOtherUser).not.toHaveBeenCalled()

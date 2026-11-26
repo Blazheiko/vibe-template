@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { RecoveryCodeHash } from '#app/domain/secrets.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -101,30 +102,51 @@ describe.skipIf(!hasPg)('MFA storage on PostgreSQL', async () => {
     it('a recovery code is spent once under a race; a new batch voids the old one', async () => {
         const userId = await newUser()
         await withTransaction((tx) =>
-            recoveryCodeRepository.replaceBatch(userId, ['a'.repeat(64), 'b'.repeat(64)], 'b1', tx),
+            recoveryCodeRepository.replaceBatch(
+                userId,
+                ['a'.repeat(64) as RecoveryCodeHash, 'b'.repeat(64) as RecoveryCodeHash],
+                'b1',
+                tx,
+            ),
         )
         expect(await recoveryCodeRepository.countUnused(userId)).toBe(2)
         const results = await Promise.all(
-            Array.from({ length: 5 }, () => recoveryCodeRepository.consume(userId, 'a'.repeat(64))),
+            Array.from({ length: 5 }, () =>
+                recoveryCodeRepository.consume(userId, 'a'.repeat(64) as RecoveryCodeHash),
+            ),
         )
         expect(results.filter(Boolean)).toHaveLength(1)
         expect(await recoveryCodeRepository.countUnused(userId)).toBe(1)
 
         await withTransaction((tx) =>
-            recoveryCodeRepository.replaceBatch(userId, ['c'.repeat(64)], 'b2', tx),
+            recoveryCodeRepository.replaceBatch(
+                userId,
+                ['c'.repeat(64) as RecoveryCodeHash],
+                'b2',
+                tx,
+            ),
         )
-        expect(await recoveryCodeRepository.consume(userId, 'b'.repeat(64))).toBe(false)
+        expect(
+            await recoveryCodeRepository.consume(userId, 'b'.repeat(64) as RecoveryCodeHash),
+        ).toBe(false)
         expect(await recoveryCodeRepository.countUnused(userId)).toBe(1)
         // A code of another user is not this user's.
         const other = await newUser()
-        expect(await recoveryCodeRepository.consume(other, 'c'.repeat(64))).toBe(false)
+        expect(
+            await recoveryCodeRepository.consume(other, 'c'.repeat(64) as RecoveryCodeHash),
+        ).toBe(false)
     })
 
     it('deleting the user removes the factor and the codes (cascade)', async () => {
         const userId = await newUser()
         await withTransaction(async (tx) => {
             await totpFactorRepository.replace(factor(userId), tx)
-            await recoveryCodeRepository.replaceBatch(userId, ['d'.repeat(64)], 'b3', tx)
+            await recoveryCodeRepository.replaceBatch(
+                userId,
+                ['d'.repeat(64) as RecoveryCodeHash],
+                'b3',
+                tx,
+            )
         })
         await db.delete(users).where(eq(users.id, userId))
         expect(await db.select().from(totpFactors).where(eq(totpFactors.userId, userId))).toEqual(

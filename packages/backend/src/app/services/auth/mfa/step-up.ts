@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { validatePassword } from 'metautil'
 import {
     MFA_REASONS,
@@ -57,7 +58,7 @@ export const PASSKEY_REAUTH_KEYS = {
 export interface StepUpRequest {
     userId: UserId
     session: Session
-    presentedSessionToken: string | undefined
+    presentedSessionToken: SessionToken | undefined
     now?: number
     /** For the audit event of a counter that went back (feat-246). */
     request?: AuditRequest

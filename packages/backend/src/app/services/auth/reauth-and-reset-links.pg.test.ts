@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { OtpHash, SessionToken, TokenHash } from '#app/domain/secrets.js'
 import { hashPassword } from 'metautil'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -117,7 +118,9 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             .insert(passwordResetTokens)
             .values({
                 userId,
-                tokenHash: `reauth-${run}-${String(counter)}`.padEnd(64, '0').slice(0, 64),
+                tokenHash: `reauth-${run}-${String(counter)}`
+                    .padEnd(64, '0')
+                    .slice(0, 64) as TokenHash,
                 expiresAt: new Date(Date.now() + 60 * 60_000),
             })
             .returning()
@@ -161,7 +164,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
     }
 
     /** POST /auth/reauth with a password; the session's auth state after it. */
-    const reauth = async (user: { id: UserId; sessionToken: string }, password: string) => {
+    const reauth = async (user: { id: UserId; sessionToken: SessionToken }, password: string) => {
         const { state, session } = sessionOf()
         const result = await stepUpService.reauth(
             { userId: user.id, session, presentedSessionToken: user.sessionToken },
@@ -178,7 +181,10 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         verified: { pwd: new Date().toISOString() },
     })
 
-    const startLink = (user: { id: UserId; sessionToken: string }, sessionAuth: SessionAuthState) =>
+    const startLink = (
+        user: { id: UserId; sessionToken: SessionToken },
+        sessionAuth: SessionAuthState,
+    ) =>
         authService.startEmailLink(
             user.id,
             { email: `new-${run}-${String(counter)}@example.test` },
@@ -300,7 +306,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         expect(await linkUsedAt(link.id)).toBeNull()
     })
 
-    const logoutAll = (user: { id: UserId; sessionToken: string }) =>
+    const logoutAll = (user: { id: UserId; sessionToken: SessionToken }) =>
         authService.logoutAll(
             {
                 getUserId: () => String(user.id),
@@ -339,7 +345,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         const user = await insertUser()
         const link = await insertResetLink(user.id)
 
-        const result = await logoutAll({ id: user.id, sessionToken: 'stale-token' })
+        const result = await logoutAll({ id: user.id, sessionToken: 'stale-token' as SessionToken })
 
         expect(result.isErr()).toBe(true)
         expect((await userRow(user.id)).sessionToken).toBe(user.sessionToken)
@@ -362,7 +368,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             .values({
                 flow: RESET_PHONE_FLOW,
                 phone,
-                codeHash: 'hash',
+                codeHash: 'hash' as OtpHash,
                 resendAvailableAt: new Date(),
                 expiresAt: new Date(Date.now() + 10 * 60_000),
             })
@@ -412,7 +418,9 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         const user = await insertUserWithPhone()
         const challenge = await insertPhoneReset(user.phone)
 
-        expect((await logoutAll({ id: user.id, sessionToken: 'stale-token' })).isErr()).toBe(true)
+        expect(
+            (await logoutAll({ id: user.id, sessionToken: 'stale-token' as SessionToken })).isErr(),
+        ).toBe(true)
 
         expect(await challengeInvalidatedAt(challenge.id)).toBeNull()
         await db.delete(smsAuthChallenges).where(eq(smsAuthChallenges.id, challenge.id))

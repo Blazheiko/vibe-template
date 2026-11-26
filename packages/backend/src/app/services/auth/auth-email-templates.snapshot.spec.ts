@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as SharedProduct from 'shared/product'
@@ -116,7 +117,7 @@ function configure(): void {
     process.env['APP_KEY'] = 'a'.repeat(32)
 }
 
-const SESSION = 'session-7'
+const SESSION = 'session-7' as SessionToken
 
 function arrange(name: string, over: Record<string, unknown> = {}): void {
     // feat-096: the token is issued on the locked user row.

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { OtpCode, OtpHash } from '#app/domain/secrets.js'
 import { eq, inArray, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -101,7 +102,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
         flow: 'register_phone' | 'link_phone'
         phone: string
         metadata: Record<string, unknown>
-        codeHash: string
+        codeHash: OtpHash
         confirmedAt: Date | null
     }) => {
         const [row] = await db
@@ -242,7 +243,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                         flow: 'register_phone',
                         phone,
                         metadata: { sessionId },
-                        codeHash: 'confirmed',
+                        codeHash: 'confirmed' as OtpHash,
                         confirmedAt: new Date(),
                     }),
                 ),
@@ -307,7 +308,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                             userId: String(account.id),
                             sessionId: `link-session-${String(account.id)}`,
                         },
-                        codeHash: hashOtpVerificationCode('123456'),
+                        codeHash: hashOtpVerificationCode('123456' as OtpCode),
                         confirmedAt: null,
                     }),
                 ),

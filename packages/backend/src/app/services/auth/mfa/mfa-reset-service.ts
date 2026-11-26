@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { nanoid } from 'nanoid'
+import { type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import { MFA_REASONS, type SessionAuthState } from 'shared/mfa'
 
 import {
@@ -50,7 +50,7 @@ export const mfaResetService = {
         /** The auth state of the admin's session (row 10); the CLI has none and is not asked. */
         sessionAuth?: SessionAuthState | undefined
         /** The session token the admin's request presented; checked under the lock. */
-        presentedSessionToken?: string | undefined
+        presentedSessionToken?: SessionToken | undefined
         /**
          * Whether the record of the request's session still exists (`context.session.isStored()`),
          * read under the actor's row lock. Required for a user actor: without it the change is
@@ -87,7 +87,9 @@ export const mfaResetService = {
         const result = await withTransaction(
             async (
                 tx,
-            ): Promise<AppResult<{ outcome: MfaResetOutcome; previousSessionToken: string }>> => {
+            ): Promise<
+                AppResult<{ outcome: MfaResetOutcome; previousSessionToken: SessionToken }>
+            > => {
                 const rows = await userRepository.lockManyById(
                     actor.kind === 'user' ? [targetUserId, actor.userId] : [targetUserId],
                     tx,
@@ -139,7 +141,7 @@ export const mfaResetService = {
                 const rotated = await userRepository.updateIfSessionToken(
                     targetUserId,
                     locked.sessionToken,
-                    { sessionToken: nanoid() },
+                    { sessionToken: newSessionToken() },
                     tx,
                 )
                 if (rotated === undefined) throw new Error('session token changed under the lock')

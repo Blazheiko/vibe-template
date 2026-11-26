@@ -1,9 +1,10 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { OtpCode, OtpHash } from '#app/domain/secrets.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
-import type * as OtpHash from './otp-verification-hash.js'
+import type * as OtpHashModule from './otp-verification-hash.js'
 import { testProofHolder, testUserActor } from '../../../test-support/audit-actor.js'
 import type { SmsChallengeId, UserId } from '#app/domain/ids.js'
 
@@ -35,10 +36,10 @@ vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
 // Counts the comparisons, keeps the real hash check.
 const comparisons = vi.hoisted(() => ({ count: 0 }))
 vi.mock('#app/services/auth/otp-verification-hash.js', async (importOriginal) => {
-    const actual = await importOriginal<typeof OtpHash>()
+    const actual = await importOriginal<typeof OtpHashModule>()
     return {
         ...actual,
-        verifyOtpVerificationCode: (code: string, hash: string): boolean => {
+        verifyOtpVerificationCode: (code: OtpCode, hash: OtpHash): boolean => {
             comparisons.count += 1
             return actual.verifyOtpVerificationCode(code, hash)
         },
@@ -109,7 +110,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
                 phone: nextPhone(),
                 metadata: values.metadata ?? {},
                 attemptCount: values.attemptCount ?? 0,
-                codeHash: hashOtpVerificationCode('123456'),
+                codeHash: hashOtpVerificationCode('123456' as OtpCode),
                 resendAvailableAt: new Date(),
                 expiresAt: new Date(Date.now() + 10 * 60_000),
             })

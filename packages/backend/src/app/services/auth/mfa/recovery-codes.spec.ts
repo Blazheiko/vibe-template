@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import type { NormalizedRecoveryCode } from '#app/domain/secrets.js'
+
 vi.mock('#config/auth.js', () => ({ authConfig: { otpHmacKey: 'h'.repeat(32) } }))
 
 const {
@@ -43,10 +45,10 @@ describe('recovery codes (feat-245 Р8)', () => {
     })
 
     it('the stored hash is a keyed HMAC, not the code', () => {
-        const hash = hashRecoveryCode('ab0cd1efgh2jkm3n')
+        const hash = hashRecoveryCode('ab0cd1efgh2jkm3n' as NormalizedRecoveryCode)
         expect(hash).toMatch(/^[0-9a-f]{64}$/)
         expect(hash).not.toContain('ab0cd1efgh2jkm3n')
-        expect(hashRecoveryCode('ab0cd1efgh2jkm3n')).toBe(hash)
-        expect(hashRecoveryCode('ab0cd1efgh2jkm3p')).not.toBe(hash)
+        expect(hashRecoveryCode('ab0cd1efgh2jkm3n' as NormalizedRecoveryCode)).toBe(hash)
+        expect(hashRecoveryCode('ab0cd1efgh2jkm3p' as NormalizedRecoveryCode)).not.toBe(hash)
     })
 })
