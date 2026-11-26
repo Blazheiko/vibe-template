@@ -1,4 +1,5 @@
 import { env } from 'node:process'
+import { seconds } from 'shared/brand'
 
 import appConfig from '#config/app.js'
 
@@ -116,7 +117,7 @@ export default Object.freeze({
     rpName: parsed.rpName,
     origins: Object.freeze([...parsed.origins]),
     /** A registration or a sign-in ceremony stays answerable this long, in seconds. */
-    challengeTtlSeconds: 300,
+    challengeTtlSeconds: seconds(300),
     /** At most this many passkeys per account. */
     maxPasskeysPerUser: 20,
     configError: parsed.error,

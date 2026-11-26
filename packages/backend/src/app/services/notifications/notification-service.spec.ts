@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { uid } from '../../../test-support/ids.js'
+import type { NotificationId } from '#app/domain/ids.js'
 
 // feat-236 (Р5): the steps of a notification in order — checks, row, signal, push — and what a
 // failure of each one leaves. `notify` never throws; `deliver` is the same work, awaited.
@@ -55,7 +56,7 @@ describe('notificationService.deliver', () => {
             },
             { category: 'security' },
         )
-        expect(notificationOpenPath(41n)).toBe('/notifications/41/open')
+        expect(notificationOpenPath(41n as NotificationId)).toBe('/notifications/41/open')
     })
 
     it.each([

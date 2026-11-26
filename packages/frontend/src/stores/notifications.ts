@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { toIsoDateTime } from 'shared/brand'
+import { toIsoDateTime, type EntityId } from 'shared/brand'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import type { NotificationItem } from 'shared'
 import { NOTIFICATIONS_UNREAD_COUNT_CAP } from 'shared/notifications'
@@ -44,7 +44,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
     const unreadCount = ref(0)
     const items = ref<NotificationItem[]>([])
-    const next = ref<string | null>(null)
+    const next = ref<EntityId | null>(null)
     const loaded = ref(false)
     const loadFailed = ref(false)
     const loadingMore = ref(false)

@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { toMs, unixMs } from 'shared/brand'
+import { addMs, toMs, nowUnixMs, type UnixMs } from 'shared/brand'
 import { normalizeEmail } from '#app/domain/email.js'
 import {
     mfaBindValueOf,
@@ -9,6 +9,8 @@ import {
     type MfaReservationId,
     type MfaAttemptId,
     type MfaBinding,
+    type SessionToken,
+    rawRecoveryCodeOf,
     newMfaReservationId,
     newMfaCompletionId,
     mfaAttemptIdOf,
@@ -182,7 +184,7 @@ const mfaTicketCookieOf = (text: string | undefined): MfaTicketId | undefined =>
 
 export async function startSecondStepIfRequired(
     auth: Auth,
-    user: { id: UserId; sessionToken: string },
+    user: { id: UserId; sessionToken: SessionToken },
     origin: Exclude<LoginOrigin, { inherit: unknown }>,
     extras: { pendingOAuthLink?: PendingOAuthLink } = {},
 ): Promise<AppResult<SecondStepRequired | null>> {
@@ -245,8 +247,8 @@ export async function secondStepState(context: SignInContext): Promise<AppResult
 }
 
 /** The session the second step creates (Р2, Р8). */
-function plannedAuth(ticket: MfaTicket, method: SecondStepMethod, now: number): SessionAuthState {
-    const at = new Date(now).toISOString()
+function plannedAuth(ticket: MfaTicket, method: SecondStepMethod, nowMs: UnixMs): SessionAuthState {
+    const at = new Date(nowMs).toISOString()
     const first = ticket.firstFactor
     if (method === 'recovery_code') {
         return {
@@ -257,7 +259,9 @@ function plannedAuth(ticket: MfaTicket, method: SecondStepMethod, now: number): 
             verified: { [first]: at },
             recovery: {
                 startedAt: at,
-                expiresAt: new Date(now + mfaConfig.recoveryWindowSeconds * 1000).toISOString(),
+                expiresAt: new Date(
+                    addMs(nowMs, toMs(mfaConfig.recoveryWindowSeconds)),
+                ).toISOString(),
             },
         }
     }
@@ -330,7 +334,7 @@ export interface SecondStepDeps {
      * The clock. Read at the start of the request (the reservation, the TOTP window) and again at
      * the capture, so a test can move time between the two.
      */
-    now?: () => number
+    now?: () => UnixMs
     /** Test seam: called after the attempt captured the ticket and before COMMIT. */
     beforeCommit?: () => Promise<void>
     /** Test seam: the commit outcome as the caller saw it. */
@@ -347,7 +351,7 @@ export async function completeSecondStep(
     request: AuditRequest,
     deps: SecondStepDeps = {},
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const now = unixMs(deps.now?.() ?? Date.now())
+    const nowMs = deps.now?.() ?? nowUnixMs()
     const ticketId = mfaTicketCookieOf(context.auth.getMfaTicketCookie())
     const bindValue = context.auth.getMfaBindCookie()
     if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '') {
@@ -365,7 +369,7 @@ export async function completeSecondStep(
         ticketId,
         binding,
         reservationId,
-        now,
+        nowMs,
         reservationTtlMs,
         attemptId,
     )
@@ -388,7 +392,7 @@ export async function completeSecondStep(
         input,
         request,
         deps,
-        now,
+        nowMs,
     )
 }
 
@@ -425,7 +429,7 @@ async function attempt(
     input: ProofInput,
     request: AuditRequest,
     deps: SecondStepDeps,
-    now: number,
+    nowMs: UnixMs,
 ): Promise<AppResult<AuthSuccessPayload>> {
     const { reservationId, attemptId } = ids
     const userId = asUserId(ticket.userId)
@@ -512,7 +516,8 @@ async function attempt(
                 throw new Abort('revoked')
             }
             if (input.method === 'recovery_code') {
-                if (!(await recoveryCodes.consume(userId, input.code, tx))) throw new Abort('wrong')
+                if (!(await recoveryCodes.consume(userId, rawRecoveryCodeOf(input.code), tx)))
+                    throw new Abort('wrong')
             } else if (input.method === 'webauthn') {
                 if (passkey === null) throw new Abort('wrong')
                 const counted = await webauthnCredentialRepository.recordUse(
@@ -523,7 +528,7 @@ async function attempt(
                 if (counted !== 'advanced') throw new Abort('wrong')
             } else {
                 const verified = await totpService.verify(userId, input.code, {
-                    now,
+                    now: nowMs,
                     executor: tx,
                     throttle: false,
                 })
@@ -539,7 +544,7 @@ async function attempt(
             const plan = context.auth.planLogin(
                 ticket.userId,
                 ticket.origin,
-                plannedAuth(ticket, input.method, now),
+                plannedAuth(ticket, input.method, nowMs),
                 expectedUserToken,
             )
             progress.plan = plan
@@ -548,7 +553,7 @@ async function attempt(
             const capture = await mfaTicketStore.capture(
                 ticketId,
                 reservationId,
-                unixMs(deps.now?.() ?? Date.now()),
+                deps.now?.() ?? nowUnixMs(),
                 toMs(mfaConfig.reservationTtlSeconds),
                 { completionId, xid, plan },
                 passkey?.challenge ?? null,
@@ -828,7 +833,7 @@ async function activate(
         return Result.err(sessionRevoked())
     }
     const recoveryExpiry = plan.auth.recovery?.expiresAt
-    if (recoveryExpiry !== undefined && Date.parse(recoveryExpiry) <= Date.now()) {
+    if (recoveryExpiry !== undefined && Date.parse(recoveryExpiry) <= nowUnixMs()) {
         await bestEffort(
             mfaTicketStore.delete(ticketId),
             undefined,

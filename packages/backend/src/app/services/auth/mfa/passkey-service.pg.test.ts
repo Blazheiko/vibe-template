@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import { eq } from 'drizzle-orm'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
@@ -58,7 +59,7 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
         security.mockClear()
     })
 
-    const NOW = Date.now()
+    const NOW = nowUnixMs()
     const iso = (offsetSeconds = 0): string => new Date(NOW + offsetSeconds * 1000).toISOString()
 
     interface TestUser {

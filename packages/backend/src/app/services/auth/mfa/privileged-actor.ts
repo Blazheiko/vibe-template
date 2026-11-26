@@ -1,3 +1,4 @@
+import type { UnixMs } from 'shared/brand'
 import { Result } from 'better-result'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { roleHasPermission, type Permission } from 'shared/access'
@@ -38,7 +39,7 @@ export interface PrivilegedActorCheck {
     permission: Permission
     action: 'role.assign' | 'mfa.reset_other'
     sessionAuth: SessionAuthState | undefined
-    now?: number | undefined
+    now?: UnixMs | undefined
     tx: DbExecutor
 }
 

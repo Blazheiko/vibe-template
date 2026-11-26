@@ -1,3 +1,4 @@
+import { nowUnixMs, unixSecondsOf } from 'shared/brand'
 import type { HttpContext, Session, SessionData } from '#vendor/types/types.js'
 import sessionConfig from '#config/session.js'
 import {
@@ -38,7 +39,8 @@ const readIncomingSession = (
 
     const anonClaims = verifyAnonSessionToken(accessToken)
     if (anonClaims !== null) {
-        const age = Math.floor(Date.now() / 1000) - anonClaims.issuedAt
+        // feat-271 (Р7): both instants in whole seconds since the epoch.
+        const age = unixSecondsOf(nowUnixMs()) - anonClaims.issuedAt
         const fresh =
             age >= 0 && age < sessionConfig.anonAgeSeconds && isValidCsrfToken(anonClaims.csrfToken)
         return fresh ? { kind: 'anonymous-cookie', ...anonClaims } : { kind: 'none' }

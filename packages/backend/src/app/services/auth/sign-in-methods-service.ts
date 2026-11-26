@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { toIsoDateTime, type EntityId, type IsoDateTime } from 'shared/brand'
+import { toIsoDateTime, type EntityId, type IsoDateTime, type UnixMs } from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 
 import { oauthAccountRepository, userRepository, withTransaction } from '#app/repositories/index.js'
@@ -61,7 +61,7 @@ export async function signInCapability(
     user: UserRow,
     tx: DbExecutor,
     change: {
-        removeOAuthLinkId?: bigint
+        removeOAuthLinkId?: OAuthAccountId
         removePasskey?: boolean
         removePasskeys?: number
         removeTotp?: boolean
@@ -91,7 +91,7 @@ export interface UnlinkRequest {
     sessionAuth: SessionAuthState | undefined
     /** Asked right before the link is removed: a logout in another tab ends the request. */
     sessionStored: () => Promise<boolean>
-    now?: number
+    now?: UnixMs
     /** feat-235: who removes it: the signed-in user of the request. */
     actor: UserAuditActor
 }

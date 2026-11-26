@@ -9,7 +9,7 @@ const ProofMethodSchema = type.enumerated('password', 'totp', 'webauthn')
 export const MfaStatusResponseSchema = type.or(
     {
         status: "'success'",
-        totp: { enabled: 'boolean', createdAt: 'string | null' },
+        totp: { enabled: 'boolean', createdAt: IsoDateTimeSchema.or('null') },
         passkeys: 'number.integer >= 0',
         recoveryCodesRemaining: 'number.integer >= 0',
         /** A verified email (or phone with phone auth on): the first factor needs it (Р12). */

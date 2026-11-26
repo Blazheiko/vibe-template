@@ -283,7 +283,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
                         const write = await state.recordSuccess(scope.lease, job.name, {
                             slot,
                             durationMs: ran.durationMs,
-                            now: finishedAt,
+                            nowMs: finishedAt,
                         })
                         stateWritten = write.status === 'written'
                         if (write.status === 'written') localRetry.delete(job.name)
@@ -295,7 +295,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
                         const write = await state.recordFailure(scope.lease, job.name, {
                             outcome,
                             durationMs: ran.durationMs,
-                            now: finishedAt,
+                            nowMs: finishedAt,
                             maxBackoffMs: maxBackoffOf(job.schedule),
                         })
                         stateWritten = write.status === 'written'

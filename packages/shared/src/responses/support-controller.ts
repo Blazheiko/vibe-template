@@ -96,7 +96,7 @@ export const SupportKnowledgeBaseReindexResponseSchema = type.or(
         'message?': 'string',
         'indexed?': 'number',
         /** Ids of the articles a reindex of everything could not embed. */
-        'failed?': 'string[]',
+        'failed?': EntityIdSchema.array(),
     },
     CanonicalErrorResponseSchema,
 )

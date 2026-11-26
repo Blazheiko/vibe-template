@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import { roleHasPermission, type Role } from 'shared/access'
 import { asUserId } from '#app/domain/ids.js'
 
@@ -97,7 +98,7 @@ const apply = (userId: string, role: Role, covered: ReadonlySet<string> | undefi
             const previous = userData.role
             const wasPaused = userData.adminChannelPaused === true
             const mayReadUsers = roleHasPermission(role, 'users.read')
-            const sessionMeets = staffSessionMeets(userData.auth, Date.now())
+            const sessionMeets = staffSessionMeets(userData.auth, nowUnixMs())
             const mayUseChannel = mayReadUsers && sessionMeets
             userData.role = role
             userData.adminChannelPaused = false

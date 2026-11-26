@@ -1,3 +1,4 @@
+import { nowUnixMs, addMs, ms } from 'shared/brand'
 import { and, eq } from 'drizzle-orm'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
@@ -55,7 +56,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         security.mockClear()
     })
 
-    const NOW = Date.now()
+    const NOW = nowUnixMs()
     const iso = (offsetSeconds = 0): string => new Date(NOW + offsetSeconds * 1000).toISOString()
 
     const newUser = async (): Promise<{ id: UserId; sessionToken: SessionToken }> => {
@@ -290,7 +291,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         // Two minutes later (four TOTP steps): the recovery window closed meanwhile.
         const { enrollmentId, code } = await setupAndCode(user, session, 4n)
         const confirmed = await totpService.confirm(
-            { ...request(user, session), now: NOW + 120_000 },
+            { ...request(user, session), now: addMs(NOW, ms(120_000)) },
             { enrollmentId, code },
         )
         expect(confirmed.status === 'error' && confirmed.error).toMatchObject({

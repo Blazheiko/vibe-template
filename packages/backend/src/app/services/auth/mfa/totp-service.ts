@@ -1,6 +1,6 @@
 import { Result } from 'better-result'
 import { asIsoDateTime } from '#app/domain/wire.js'
-import type { IsoDateTime } from 'shared/brand'
+import { type IsoDateTime, nowUnixMs, type UnixMs, addMs, toIsoDateTime, toMs } from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { nanoid } from 'nanoid'
 import { PRODUCT } from 'shared/product'
@@ -58,7 +58,7 @@ import {
     matchTotpStep,
     otpauthUri,
 } from './totp.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { TotpFactorId, UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р8): the TOTP factor of the signed-in user.
 
@@ -95,11 +95,11 @@ export interface TotpRequest {
     session: Session
     presentedSessionToken: SessionToken | undefined
     actor: UserAuditActor
-    now?: number
+    now?: UnixMs
 }
 
 export interface MfaStatus {
-    totp: { enabled: boolean; createdAt: string | null }
+    totp: { enabled: boolean; createdAt: IsoDateTime | null }
     passkeys: number
     recoveryCodesRemaining: number
     recoveryContact: boolean
@@ -144,7 +144,7 @@ export const totpService = {
         return Result.ok({
             totp: {
                 enabled: totp !== undefined,
-                createdAt: totp?.confirmedAt.toISOString() ?? null,
+                createdAt: totp === undefined ? null : toIsoDateTime(totp.confirmedAt),
             },
             passkeys,
             recoveryCodesRemaining,
@@ -191,7 +191,7 @@ export const totpService = {
             enrollmentId: nanoid(24),
             secret: base32Encode(secret),
             expiresAt: new Date(
-                (request.now ?? Date.now()) + mfaConfig.totpEnrollmentTtlSeconds * 1000,
+                addMs(request.now ?? nowUnixMs(), toMs(mfaConfig.totpEnrollmentTtlSeconds)),
             ).toISOString(),
             proof: proof.value,
         }
@@ -217,7 +217,7 @@ export const totpService = {
         input: { enrollmentId: string; code: string },
     ): Promise<AppResult<{ recoveryCodes: string[] | null }>> {
         const { userId, session } = request
-        const now = request.now ?? Date.now()
+        const now = request.now ?? nowUnixMs()
         const data = session.sessionInfo?.data
         const pending = data?.[TOTP_ENROLLMENT_KEY]
         // feat-259 (docs/plan/mfa-review-fixes-7-plan.md, 9.2): a setup not written yet is taken
@@ -292,7 +292,7 @@ export const totpService = {
                 account,
                 auth: authOf(session),
                 proof: setupProof,
-                now: request.now ?? Date.now(),
+                now: request.now ?? nowUnixMs(),
             })
             if (refusal !== null) {
                 refused.keptProof = true
@@ -371,8 +371,8 @@ export const totpService = {
     async verify(
         userId: UserId,
         code: string,
-        options: { now?: number; executor?: DbExecutor; throttle?: boolean } = {},
-    ): Promise<AppResult<{ factorId: bigint }>> {
+        options: { now?: UnixMs; executor?: DbExecutor; throttle?: boolean } = {},
+    ): Promise<AppResult<{ factorId: TotpFactorId }>> {
         if (options.throttle !== false) {
             const throttle = await enforceThrottle(
                 throttlePolicies.mfaVerifyUser,
@@ -387,7 +387,7 @@ export const totpService = {
         }
         const secret = openTotpSecret(factor)
         if (secret === null) return Result.err(serviceUnavailable())
-        const step = matchTotpStep(secret, code, options.now ?? Date.now())
+        const step = matchTotpStep(secret, code, options.now ?? nowUnixMs())
         if (step === null) return Result.err(badRequest('Invalid code', MFA_REASONS.invalidCode))
         const spent = await totpFactorRepository.consumeStep(
             userId,
@@ -512,7 +512,7 @@ export const totpService = {
 async function finishInSession(
     session: Session,
     factor: TotpFactorRow,
-    now: number,
+    nowMs: UnixMs,
 ): Promise<AppResult<void>> {
     const updated = await session.updateSessionAuth(
         (current) =>
@@ -521,7 +521,7 @@ async function finishInSession(
                 : withReplacementFactor(current, {
                       kind: 'totp',
                       id: String(factor.id),
-                      at: new Date(now).toISOString(),
+                      at: new Date(nowMs).toISOString(),
                   }),
         { removeKeys: [TOTP_ENROLLMENT_KEY, TOTP_ENROLLMENT_ID_KEY] },
     )

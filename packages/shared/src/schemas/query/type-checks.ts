@@ -13,8 +13,9 @@ import type {
 } from './simple.js'
 import type { SupportChatHistoryQuery, SupportChatHistoryQueryInput } from './support.js'
 import type { LlmTextUsageQuery, LlmTextUsageQueryInput } from './usage.js'
+import { type } from '@arktype/type'
 import type { AssertEqual, Expect, QueryInputOf } from './types.js'
-import type { EntityId, EntityIdSchema } from '../../brands/ids.js'
+import { EntityIdSchema, type EntityId } from '../../brands/ids.js'
 import type { Role } from '../../access/index.js'
 
 // What each query schema infers is what the callers of the API are told, so it is written out here
@@ -118,7 +119,42 @@ interface BrandedIdQuery {
     readonly inferIn: { userId: string; page?: string }
 }
 
+// feat-271: the same through a real ArkType schema, with the shapes a hand-written interface does
+// not reach: an optional brand, a nullable brand, a list of brands and a parsed number.
+const _BrandedProbeQuerySchema = type({
+    owner: EntityIdSchema,
+    'before?': EntityIdSchema,
+    'parent?': EntityIdSchema.or('null'),
+    'ids?': EntityIdSchema.array(),
+    'page?': 'string.integer.parse',
+})
+
 export type BrandedQueryChecks = [
     Expect<AssertEqual<QueryInputOf<BrandedIdQuery>, { userId: string; page?: number | string }>>,
     Expect<AssertEqual<(typeof EntityIdSchema)['infer'], EntityId>>,
+    Expect<
+        AssertEqual<
+            QueryInputOf<typeof _BrandedProbeQuerySchema>,
+            {
+                owner: string
+                before?: string
+                parent?: string | null
+                ids?: string[]
+                page?: number | string
+            }
+        >
+    >,
+    // The handler still gets the brands.
+    Expect<
+        AssertEqual<
+            (typeof _BrandedProbeQuerySchema)['infer'],
+            {
+                owner: EntityId
+                before?: EntityId
+                parent?: EntityId | null
+                ids?: EntityId[]
+                page?: number
+            }
+        >
+    >,
 ]

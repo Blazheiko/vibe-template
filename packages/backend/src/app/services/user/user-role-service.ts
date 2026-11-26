@@ -1,6 +1,7 @@
 import { userRepository } from '#app/repositories/index.js'
 import type { UserRow } from '#app/repositories/index.js'
 import type { UserId } from '#app/domain/ids.js'
+import type { SessionToken } from '#app/domain/secrets.js'
 
 export const userRoleService = {
     // `undefined` when the user no longer exists.
@@ -21,7 +22,7 @@ export const userRoleService = {
      */
     async findAccess(
         userId: UserId,
-    ): Promise<{ role: UserRow['role']; sessionToken: string } | undefined> {
+    ): Promise<{ role: UserRow['role']; sessionToken: SessionToken } | undefined> {
         const user = await userRepository.findById(userId)
         return user === undefined ? undefined : { role: user.role, sessionToken: user.sessionToken }
     },

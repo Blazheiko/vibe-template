@@ -33,7 +33,7 @@ import {
     encodeSessionCursor,
 } from '#vendor/utils/session/session-page-cursor.js'
 import { sessionListChanged } from '#vendor/utils/session/session-list-events.js'
-import { asUserId, type UserId } from '#app/domain/ids.js'
+import { parseUserId, type UserId } from '#app/domain/ids.js'
 
 // feat-233: the account page's list of active sessions (Р7), ending one of them (Р8) and ending
 // all but the current one (Р9). The list lives in Redis next to the records (Р1, Р2); `online`
@@ -45,11 +45,25 @@ import { asUserId, type UserId } from '#app/domain/ids.js'
  * (privileged-actor). Ending one session here, a plain logout and a sign-in replacing a signed-in
  * session (registered for the session layer in app/start) all use it.
  */
-export async function underUserRowLock<T>(userId: string, work: () => Promise<T>): Promise<T> {
+export async function underUserRowLock<T>(userId: UserId, work: () => Promise<T>): Promise<T> {
     return withTransaction(async (tx) => {
-        await userRepository.lockById(asUserId(userId), tx)
+        await userRepository.lockById(userId, tx)
         return work()
     })
+}
+
+/**
+ * The deletion lock of the session layer (registered in app/start): the layer hands over the
+ * user id of a record as text. feat-271 (Р13): it is read by its brand constructor; a record
+ * whose id is not a row id belongs to no user whose row could be locked, so it is deleted
+ * without the lock instead of throwing.
+ */
+export const sessionDeletionLock = (
+    userId: string,
+    work: () => Promise<boolean>,
+): Promise<boolean> => {
+    const id = parseUserId(userId)
+    return id === null ? work() : underUserRowLock(id, work)
 }
 
 export interface SessionListPage {
@@ -128,12 +142,14 @@ export const sessionListService = {
      * An unknown id, an id of another user and an already ended session are all 404.
      */
     async revoke(input: {
-        userId: string
+        userId: UserId
         current: SessionInfo
         publicId: string
         sessionStored: SessionStillStored
     }): Promise<AppResult<void>> {
-        const { userId, current, publicId } = input
+        const { current, publicId } = input
+        const owner = input.userId
+        const userId = String(owner)
         const userToken = current.data.userToken
         if (typeof userToken !== 'string') return Result.err(sessionRevoked())
         if (current.data.device?.publicId === publicId) {
@@ -146,7 +162,7 @@ export const sessionListService = {
         // The record goes under the user's row lock: a role change or an MFA reset of another
         // account by this user reads its session record under the same lock (privileged-actor),
         // so either this revocation is seen there or it waits for that write to commit.
-        const target = await underUserRowLock(userId, async () => {
+        const target = await underUserRowLock(owner, async () => {
             const found = await findSessionByPublicId(userToken, publicId)
             if (found === null) return null
             const removed = await destroySession(found.sid, userToken, publicId)
@@ -155,7 +171,7 @@ export const sessionListService = {
         if (target === null) return Result.err(notFound('Session', 'Session not found'))
 
         wsSessionRevocation.closeUserConnections(userId, { sessionId: target.sid })
-        userNotificationService.security(asUserId(userId), 'session_revoked')
+        userNotificationService.security(owner, 'session_revoked')
         sessionListChanged(userId)
         logger.info({ userId, sessionId: target.sid }, 'Session ended from the session list')
         return Result.ok(undefined)
@@ -174,7 +190,7 @@ export const sessionListService = {
         sessionStored: SessionStillStored
         /** feat-235: who ends them: the signed-in user of the request. */
         actor: UserAuditActor
-    }): Promise<AppResult<{ sessionToken: string }>> {
+    }): Promise<AppResult<{ sessionToken: SessionToken }>> {
         const { userId, presentedSessionToken: presented } = input
         const { actor } = input
         if (presented === undefined) return Result.err(sessionRevoked())

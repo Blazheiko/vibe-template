@@ -214,10 +214,22 @@ export default defineConfigWithVueTs(
     {
         // ADR 0007 (feat-268): a branded value (EntityId, IsoDateTime…) comes from a guard, a
         // schema or a constructor of shared/brand, never from a cast; the tests may cast.
-        files: ['src/**/*.{ts,vue}'],
+        // feat-271: .mts / .tsx too. A <template> expression has no type information, so the rule
+        // cannot tell a brand there: a template takes no `as` cast at all (vue/no-restricted-syntax).
+        files: ['src/**/*.{ts,mts,tsx,vue}'],
         ignores: ['src/**/__tests__/**'],
         plugins: { local: { rules: { 'no-brand-cast': noBrandCast } } },
-        rules: { 'local/no-brand-cast': 'error' },
+        rules: {
+            'local/no-brand-cast': 'error',
+            'vue/no-restricted-syntax': [
+                'error',
+                {
+                    selector: 'TSAsExpression, TSTypeAssertion',
+                    message:
+                        'No type cast in a template: narrow the value in <script> (a branded value comes from a guard or a constructor, ADR 0007).',
+                },
+            ],
+        },
     },
     {
         files: ['src/types/i18n.d.ts'],

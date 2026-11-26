@@ -717,7 +717,7 @@ interface OAuthIdentity {
 
 interface ClaimedLink {
     claimed: boolean
-    sessionToken: string
+    sessionToken: SessionToken
     previousSessionToken: SessionToken
     /** The account after the link, for the notice (feat-198). */
     account: { email: string | null; name: string }
@@ -762,7 +762,7 @@ type SignInNotice = 'full' | 'push' | 'none'
 async function finishSignIn(
     auth: Auth,
     userId: UserId,
-    sessionToken: string,
+    sessionToken: SessionToken,
     provider: string,
     notice: SignInNotice,
     pendingOAuthLink?: PendingOAuthLink,
@@ -801,7 +801,7 @@ async function linkTrusted(
     let linked:
         | { kind: 'missing' }
         | { kind: 'changed' }
-        | { kind: 'second_step'; sessionToken: string }
+        | { kind: 'second_step'; sessionToken: SessionToken }
         | ({ kind: 'ok'; events: RecordedAuditEvent[] } & ClaimedLink)
     try {
         linked = await withTransaction(async (tx) => {
@@ -980,9 +980,9 @@ async function signInWithIdentity(
             const user = await userRepository.lockById(existingOAuth.userId, tx)
             if (user === undefined) return { kind: 'missing' as const }
             const link = await oauthAccountRepository.findLinkForUser(
+                user.id,
                 provider,
                 providerUserId,
-                user.id,
                 tx,
             )
             if (link === undefined) return { kind: 'revoked' as const }

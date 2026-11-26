@@ -14,7 +14,12 @@ export type PositiveIntInput = string | number
  * writes a string, and the handler gets the brand from the parsed query.
  */
 export type QueryWireValue<T> =
-    T extends Brand<infer Base, unknown> ? QueryWireValue<Base> : PlainWireValue<T>
+    T extends Brand<infer Base, unknown>
+        ? QueryWireValue<Base>
+        : // feat-271: a list of branded values is sent as a list of their texts.
+          T extends readonly (infer E)[]
+          ? QueryWireValue<E>[]
+          : PlainWireValue<T>
 
 type PlainWireValue<T> = T extends number
     ? number | string

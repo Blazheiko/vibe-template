@@ -1,3 +1,4 @@
+import type { UnixMs } from 'shared/brand'
 import { Result } from 'better-result'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { canAssignRole, isStaffRole, type Role } from 'shared/access'
@@ -74,7 +75,7 @@ export const roleAssignmentService = {
          * refused with 401 session_revoked. The CLI has no session.
          */
         sessionStored?: (() => Promise<boolean>) | undefined
-        now?: number
+        now?: UnixMs
     }): Promise<AppResult<RoleAssignment>> {
         const { targetUserId, role } = input
         let { actor } = input

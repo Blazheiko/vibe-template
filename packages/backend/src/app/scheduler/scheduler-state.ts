@@ -28,13 +28,13 @@ export type FailureWrite = { status: 'written'; nextRetryAt: number } | { status
 export interface SuccessRecord {
     slot: number
     durationMs: number
-    now: UnixMs
+    nowMs: UnixMs
 }
 
 export interface FailureRecord {
     outcome: 'failed' | 'timeout'
     durationMs: number
-    now: UnixMs
+    nowMs: UnixMs
     maxBackoffMs: number
 }
 
@@ -101,20 +101,20 @@ export const redisSchedulerState: SchedulerState = {
         return state
     },
 
-    async recordSuccess(lease, job, { slot, durationMs, now }) {
+    async recordSuccess(lease, job, { slot, durationMs, nowMs }) {
         const reply = await lease.evalAsOwner(
             SUCCESS_LUA,
             [stateKey(job)],
-            [slot, now, Math.round(durationMs)],
+            [slot, nowMs, Math.round(durationMs)],
         )
         return reply === NOT_OWNER ? { status: 'not-owner' } : { status: 'written' }
     },
 
-    async recordFailure(lease, job, { outcome, durationMs, now, maxBackoffMs }) {
+    async recordFailure(lease, job, { outcome, durationMs, nowMs, maxBackoffMs }) {
         const reply = await lease.evalAsOwner(
             FAILURE_LUA,
             [stateKey(job)],
-            [now, Math.round(durationMs), outcome, maxBackoffMs],
+            [nowMs, Math.round(durationMs), outcome, maxBackoffMs],
         )
         if (reply === NOT_OWNER) return { status: 'not-owner' }
         return { status: 'written', nextRetryAt: Number(reply) }

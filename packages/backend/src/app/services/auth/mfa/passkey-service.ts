@@ -1,5 +1,14 @@
 import { Result } from 'better-result'
-import { toIsoDateTime, toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
+import {
+    toIsoDateTime,
+    toIsoDateTimeOrNull,
+    type EntityId,
+    type IsoDateTime,
+    nowUnixMs,
+    type UnixMs,
+    addMs,
+    toMs,
+} from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { nanoid } from 'nanoid'
 import {
@@ -66,7 +75,7 @@ export interface PasskeyRequest {
     session: Session
     presentedSessionToken: SessionToken | undefined
     actor: UserAuditActor
-    now?: number
+    now?: UnixMs
 }
 
 export interface PasskeyView {
@@ -106,7 +115,7 @@ const limitReached = (): AppError =>
 const defaultName = (response: RegistrationResponse): string =>
     response.authenticatorAttachment === 'cross-platform' ? 'Security key' : 'Passkey'
 
-const proofTime = (request: PasskeyRequest): { now?: number } =>
+const proofTime = (request: PasskeyRequest): { now?: UnixMs } =>
     request.now !== undefined ? { now: request.now } : {}
 
 interface PendingRegistration {
@@ -174,7 +183,7 @@ export const passkeyService = {
         })
         const enrollmentId = nanoid(24)
         const expiresAt = new Date(
-            (request.now ?? Date.now()) + webauthnConfig.challengeTtlSeconds * 1000,
+            addMs(request.now ?? nowUnixMs(), toMs(webauthnConfig.challengeTtlSeconds)),
         ).toISOString()
         const stored = await request.session.updateSessionData({
             [PASSKEY_REGISTRATION_KEYS.challenge]: options.challenge,
@@ -196,7 +205,7 @@ export const passkeyService = {
         input: { enrollmentId: string; name?: string; response: RegistrationResponse },
     ): Promise<AppResult<{ passkey: PasskeyView; recoveryCodes: string[] | null }>> {
         const { userId, session } = request
-        const now = request.now ?? Date.now()
+        const now = request.now ?? nowUnixMs()
         const answered = fromBase64Url(input.response.id)
         const pending = pendingOf(session)
         const current = pending?.enrollmentId === input.enrollmentId ? pending : null
@@ -279,7 +288,7 @@ export const passkeyService = {
                 account,
                 auth: authOf(session),
                 proof: optionsProof,
-                now: request.now ?? Date.now(),
+                now: request.now ?? nowUnixMs(),
             })
             if (refusal !== null) {
                 refused.keptProof = true
@@ -439,7 +448,7 @@ export const passkeyService = {
 async function finishInSession(
     session: Session,
     row: WebAuthnCredentialRow,
-    now: number,
+    nowMs: UnixMs,
 ): Promise<AppResult<void>> {
     const updated = await session.updateSessionAuth(
         (current) =>
@@ -448,7 +457,7 @@ async function finishInSession(
                 : withReplacementFactor(current, {
                       kind: 'webauthn',
                       id: toEntityId(row.id),
-                      at: new Date(now).toISOString(),
+                      at: new Date(nowMs).toISOString(),
                   }),
         { removeKeys: REGISTRATION_KEYS },
     )

@@ -14,7 +14,7 @@ import { registerSignInCompletionHook } from '#vendor/utils/session/request-sess
 import { registerSessionDeletionLock } from '#vendor/utils/session/session-deletion-lock.js'
 import { retireCompletedTicket } from '#app/services/auth/mfa/mfa-sign-in.js'
 import { checkSessionToken } from '#app/services/auth/session-token-check.js'
-import { underUserRowLock } from '#app/services/user/session-list-service.js'
+import { sessionDeletionLock } from '#app/services/user/session-list-service.js'
 
 registerWsMessageValidator(wsMessageValidator)
 
@@ -35,4 +35,4 @@ registerSignInCompletionHook((context, completionId) =>
 // Р13: a logout, and a sign-in replacing a signed-in session, delete its record under the user's
 // row lock, as ending a session from the session list does: a privileged write that checked the
 // record under that lock commits first.
-registerSessionDeletionLock(underUserRowLock)
+registerSessionDeletionLock(sessionDeletionLock)

@@ -1,5 +1,5 @@
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
-import { asUserId } from '#app/domain/ids.js'
+import { parseUserId } from '#app/domain/ids.js'
 import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
@@ -57,6 +57,9 @@ const drainDisconnects = async (timeoutMs: number): Promise<boolean> => {
 const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promise<void> => {
     const { userId, sessionId } = userData
     if (userId === undefined || sessionId === undefined) return
+    // feat-271 (Р13): the id the upgrade checked, read by its brand constructor once.
+    const ownerId = parseUserId(userId)
+    if (ownerId === null) return
     const connectedAt = new Date()
 
     // feat-210: until the reads below answer, the connection is in no list a revocation closes.
@@ -70,7 +73,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     let revokedMeanwhile: boolean
     try {
         ;[access, sessionStored] = await Promise.all([
-            userRoleService.findAccess(asUserId(userId)),
+            userRoleService.findAccess(ownerId),
             // A logout of one session deletes its stored record and rotates nothing.
             userToken === undefined
                 ? Promise.resolve(false)
@@ -84,7 +87,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
             access !== undefined &&
             wsConnectionRegistry.takeConnectingRoleStale(userData.uuid)
         ) {
-            access = await userRoleService.findAccess(asUserId(userId))
+            access = await userRoleService.findAccess(ownerId)
         }
     } finally {
         revokedMeanwhile = settle()
@@ -134,7 +137,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     void touchSessionFromWs(userData)
     const connectSettled = userOnlineService
         .trackConnected({
-            userId: asUserId(userId),
+            userId: ownerId,
             sessionId,
             socketUuid: userData.uuid,
             role: userData.role,

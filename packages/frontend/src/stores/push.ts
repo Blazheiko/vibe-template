@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import type { EntityId } from 'shared/brand'
 import { defineStore } from 'pinia'
 import { pushSubscriptionApi } from '@/utils/api'
 import type { GetSubscriptionsResponse, SerializedPushSubscription } from 'shared/responses'
@@ -64,7 +65,7 @@ export const usePushStore = defineStore('push', () => {
     const notificationPermission = ref<NotificationPermission>('default')
     const pushSubscription = ref<PushSubscription | null>(null)
     const isSubscribedToPush = ref(false)
-    const pushSubscriptionId = ref<string | null>(null)
+    const pushSubscriptionId = ref<EntityId | null>(null)
     const pushSubscriptionsResource = createResource(60_000)
     // True while subscribeToPush is between the browser's subscription and the server's answer:
     // that subscription is not a leftover of another account.

@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { uid } from '../../../test-support/ids.js'
+import { normalizeEmail } from '#app/domain/email.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { badRequest, unauthorized } from '#app/services/shared/errors.js'
 import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
@@ -57,7 +58,11 @@ describe('enforceEmailLinkThrottles', () => {
         const { enforceEmailLinkThrottles } = await import('./enforce-throttle.js')
         const { throttlePolicies } = await import('#config/throttle-policies.js')
 
-        const result = await enforceEmailLinkThrottles('user@example.com', uid(7), rejected)
+        const result = await enforceEmailLinkThrottles(
+            normalizeEmail('user@example.com'),
+            uid(7),
+            rejected,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         expect(consumeAuthThrottleMock.mock.calls).toEqual([
@@ -75,7 +80,11 @@ describe('enforceEmailLinkThrottles', () => {
             }
             const { enforceEmailLinkThrottles } = await import('./enforce-throttle.js')
 
-            const result = await enforceEmailLinkThrottles('user@example.com', uid(7), rejected)
+            const result = await enforceEmailLinkThrottles(
+                normalizeEmail('user@example.com'),
+                uid(7),
+                rejected,
+            )
 
             expect(Result.isError(result) && result.error).toEqual(rejected)
             expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(spent + 1)

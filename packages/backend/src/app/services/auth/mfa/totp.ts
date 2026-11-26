@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { unixSecondsOf, type UnixMs } from 'shared/brand'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7): TOTP of RFC 6238 on node:crypto, the profile
 // authenticator apps support: HMAC-SHA1, 30-second steps, 6 digits, a window of one step either
@@ -48,8 +49,9 @@ export function base32Decode(text: string): Buffer {
 
 export const generateTotpSecret = (): Buffer => randomBytes(SECRET_BYTES)
 
-export const totpStepAt = (unixMs: number): bigint =>
-    BigInt(Math.floor(unixMs / 1000 / TOTP_PERIOD_SECONDS))
+/** The TOTP step of an instant (feat-271, plan Р7: an instant, rounded down to whole seconds). */
+export const totpStepAt = (at: UnixMs): bigint =>
+    BigInt(Math.floor(unixSecondsOf(at) / TOTP_PERIOD_SECONDS))
 
 /** HOTP (RFC 4226) of `counter`: what a TOTP code is for one step. */
 export function hotp(
@@ -77,7 +79,7 @@ const sameCode = (a: string, b: string): boolean =>
  * The step `code` is valid for around `nowMs` (± TOTP_WINDOW_STEPS), or null. Every step of the
  * window is computed, so the time taken does not tell which one matched.
  */
-export function matchTotpStep(secret: Buffer, code: string, nowMs: number): bigint | null {
+export function matchTotpStep(secret: Buffer, code: string, nowMs: UnixMs): bigint | null {
     const clean = code.replace(/\s/g, '')
     if (!/^\d{6}$/.test(clean)) return null
     const current = totpStepAt(nowMs)

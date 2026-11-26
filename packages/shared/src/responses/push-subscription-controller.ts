@@ -20,8 +20,8 @@ export const SerializedPushSubscriptionSchema = type({
     osName: 'string | null',
     osVersion: 'string | null',
     timezone: 'string | null',
-    created_at: 'string | null',
-    updated_at: 'string | null',
+    created_at: IsoDateTimeSchema.or('null'),
+    updated_at: IsoDateTimeSchema.or('null'),
     lastUsedAt: IsoDateTimeSchema.or('null'),
 })
 export type SerializedPushSubscription = typeof SerializedPushSubscriptionSchema.infer
@@ -121,7 +121,7 @@ export const GetSubscriptionStatisticsResponseSchema = type.or(
                 pendingNotifications: 'number',
                 successRate: 'number',
                 last7DaysCount: 'number',
-                lastUsed: 'string | null',
+                lastUsed: IsoDateTimeSchema.or('null'),
                 isActive: 'boolean',
                 createdAt: IsoDateTimeSchema,
             },

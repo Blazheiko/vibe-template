@@ -529,9 +529,9 @@ describe('oauthService.handleCallback', () => {
             // feat-097: lock the user, then read the link again in the same transaction.
             expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
             expect(oauthAccountRepositoryMock.findLinkForUser).toHaveBeenCalledWith(
+                7n,
                 'github',
                 'provider-user-1',
-                7n,
                 TX,
             )
             expect(order(userRepositoryMock.lockById)).toBeLessThan(

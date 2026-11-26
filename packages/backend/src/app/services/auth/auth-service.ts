@@ -1264,7 +1264,7 @@ export const authService = {
         actor: UserAuditActor,
         /** feat-245 (row 6 of Р3): how the session was authenticated. */
         sessionAuth: SessionAuthState | undefined,
-    ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
+    ): Promise<AppResult<{ status: 'success'; sessionToken: SessionToken }>> {
         // feat-096: the row read here may already be the one a claim left (password NULL,
         // token rotated). The session must still be the current one, here and in the update.
         // feat-245: the change is allowed by the proof matrix, not by a password in the form.

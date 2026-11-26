@@ -484,7 +484,7 @@ export const knowledgeBaseService = {
         return Result.ok({ indexed: stored ? 1 : 0 })
     },
 
-    async reindexAll(): Promise<AppResult<{ indexed: number; failed: string[] }>> {
+    async reindexAll(): Promise<AppResult<{ indexed: number; failed: EntityId[] }>> {
         return Result.ok(await supportEmbeddingService.reindexAll())
     },
 }

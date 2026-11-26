@@ -1,3 +1,4 @@
+import { unixMs } from 'shared/brand'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -28,7 +29,7 @@ const VECTORS: [number, string, string, string][] = [
 
 describe('TOTP (feat-245 Р7, RFC 6238)', () => {
     it.each(VECTORS)('RFC 6238 Appendix B at T=%i', (seconds, sha1, sha256, sha512) => {
-        const step = totpStepAt(seconds * 1000)
+        const step = totpStepAt(unixMs(seconds * 1000))
         expect(hotp(SEED_SHA1, step, 8, 'sha1')).toBe(sha1)
         expect(hotp(SEED_SHA256, step, 8, 'sha256')).toBe(sha256)
         expect(hotp(SEED_SHA512, step, 8, 'sha512')).toBe(sha512)
@@ -54,7 +55,7 @@ describe('TOTP (feat-245 Р7, RFC 6238)', () => {
 
     it('accepts the current step and one step either way, and answers which one', () => {
         const secret = generateTotpSecret()
-        const now = 1_800_000_000_000
+        const now = unixMs(1_800_000_000_000)
         const step = totpStepAt(now)
         expect(matchTotpStep(secret, hotp(secret, step), now)).toBe(step)
         expect(matchTotpStep(secret, hotp(secret, step - 1n), now)).toBe(step - 1n)
@@ -65,7 +66,7 @@ describe('TOTP (feat-245 Р7, RFC 6238)', () => {
 
     it('refuses anything that is not six digits; spaces are ignored', () => {
         const secret = generateTotpSecret()
-        const now = 1_800_000_000_000
+        const now = unixMs(1_800_000_000_000)
         const code = hotp(secret, totpStepAt(now))
         expect(matchTotpStep(secret, `${code.slice(0, 3)} ${code.slice(3)}`, now)).toBe(
             totpStepAt(now),

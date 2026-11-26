@@ -130,7 +130,9 @@ export default Object.freeze({
     /** A recent OAuth sign-in stands for a proof this long (the rule of feat-097), in seconds. */
     oauthRecentSeconds: 600,
     /** Absolute lifetime of a recovery session (MFA_RECOVERY_WINDOW_SECONDS, default 900). */
-    recoveryWindowSeconds: reader.int('MFA_RECOVERY_WINDOW_SECONDS', 900, { min: 60, max: 3600 }),
+    recoveryWindowSeconds: seconds(
+        reader.int('MFA_RECOVERY_WINDOW_SECONDS', 900, { min: 60, max: 3600 }),
+    ),
     /** Lifetime of a second-step ticket (MFA_TICKET_TTL_SECONDS, default 300). */
     ticketTtlSeconds: seconds(reader.int('MFA_TICKET_TTL_SECONDS', 300, { min: 60, max: 1800 })),
     /** An attempt holds its place in the ticket this long (MFA_RESERVATION_TTL_SECONDS, 30). */
@@ -138,7 +140,7 @@ export default Object.freeze({
         reader.int('MFA_RESERVATION_TTL_SECONDS', 30, { min: 5, max: 300 }),
     ),
     /** A TOTP setup stays confirmable this long, in seconds. */
-    totpEnrollmentTtlSeconds: 600,
+    totpEnrollmentTtlSeconds: seconds(600),
     /**
      * feat-247 (Р10, Р11): a staff role needs a second factor and a recent proof of it to use
      * staff permissions, and a staff role is given only to an account with a factor

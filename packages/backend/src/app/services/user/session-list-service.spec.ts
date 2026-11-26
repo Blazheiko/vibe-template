@@ -138,7 +138,7 @@ describe('list', () => {
 
 describe('revoke (Р8)', () => {
     const revoke = (publicId: string, sessionStored = stored) =>
-        sessionListService.revoke({ userId: '7', current, publicId, sessionStored })
+        sessionListService.revoke({ userId: uid(7), current, publicId, sessionStored })
 
     it('ends the other session, closes its sockets, tells every device', async () => {
         storage.findSessionByPublicId.mockResolvedValue({ sid: 'other-sid', seen: null })

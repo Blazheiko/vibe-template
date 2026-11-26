@@ -139,7 +139,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
     const storage = await import('#vendor/utils/session/redis-session-storage.js')
     const { userRepository } = await import('#app/repositories/index.js')
     const { roleAssignmentService } = await import('#app/services/user/role-assignment-service.js')
-    const { underUserRowLock } = await import('#app/services/user/session-list-service.js')
+    const { sessionDeletionLock } = await import('#app/services/user/session-list-service.js')
     const { authService } = await import('#app/services/auth/auth-service.js')
     const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
     const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
@@ -173,7 +173,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         registerSessionDeletionLock((userId, work) => {
             attempts += 1
             onAttempt(attempts)
-            return underUserRowLock(userId, work)
+            return sessionDeletionLock(userId, work)
         })
     })
     afterEach(() => {

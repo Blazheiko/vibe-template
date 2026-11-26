@@ -5,7 +5,8 @@ import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
 import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import supportConfig from '#config/support.js'
-import type { UserId, SupportArticleId } from '#app/domain/ids.js'
+import { toEntityId, type UserId, type SupportArticleId } from '#app/domain/ids.js'
+import type { EntityId } from 'shared/brand'
 
 // The version read with the text goes with its vector: a newer text in the meantime wins.
 async function storeVector(
@@ -69,7 +70,7 @@ export const supportEmbeddingService = {
      * later batches are still indexed (feat-160). It used to throw out of the loop, so one
      * article kept every article after it unindexed, run after run.
      */
-    async reindexAll(): Promise<{ indexed: number; failed: string[] }> {
+    async reindexAll(): Promise<{ indexed: number; failed: EntityId[] }> {
         if (!openaiEmbeddingAdapter.isConfigured()) {
             logger.warn('OpenAI Embedding not configured, skipping reindex')
             return { indexed: 0, failed: [] }
@@ -82,7 +83,7 @@ export const supportEmbeddingService = {
         // request could exceed the provider's input limits.
         const batchSize = supportConfig.embeddingBatchSize
         let stored = 0
-        const failed: string[] = []
+        const failed: EntityId[] = []
         for (let start = 0; start < allRows.length; start += batchSize) {
             const batch = allRows.slice(start, start + batchSize)
             let vectors: number[][]
@@ -92,7 +93,7 @@ export const supportEmbeddingService = {
                     { onComplete: llmUsageService.textUsageRecorder('SUPPORT_EMBEDDING', null) },
                 )
             } catch (err) {
-                const articleIds = batch.map((a) => String(a.id))
+                const articleIds = batch.map((a) => toEntityId(a.id))
                 logger.error(
                     { err, articleIds },
                     'Support KB reindex: a batch was not embedded, the run goes on',
