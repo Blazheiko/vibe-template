@@ -1,4 +1,5 @@
 import { hashPassword, validatePassword } from 'metautil'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { presentedSessionTokenOf, type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import { Result } from 'better-result'
 import type { Auth, LoginOrigin, Session } from '#vendor/types/types.js'
@@ -112,7 +113,7 @@ function assertPhoneAuthEnabled(): AppResult<never> | undefined {
     return Result.err(badRequest('Phone authentication is disabled'))
 }
 
-type LoginKey = { kind: 'email'; value: string } | { kind: 'phone'; value: string }
+type LoginKey = { kind: 'email'; value: NormalizedEmail } | { kind: 'phone'; value: string }
 
 /**
  * The normalized login identifier, shared by the user lookup and the login
@@ -216,7 +217,7 @@ async function buildAuthSuccess(
 async function persistRegisteredUser(
     createUserInput: {
         name: string
-        email: string | null
+        email: NormalizedEmail | null
         phone: string | null
         passwordHash: string
     },
@@ -259,7 +260,7 @@ async function persistRegisteredUser(
 async function finalizeRegistration(
     createUserInput: {
         name: string
-        email: string | null
+        email: NormalizedEmail | null
         phone: string | null
         passwordHash: string
     },

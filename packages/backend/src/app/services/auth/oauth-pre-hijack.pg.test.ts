@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { TokenHash } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 
@@ -107,9 +108,9 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
     const createdUserIds: UserId[] = []
     let counter = 0
 
-    const address = (label: string, domain = 'gmail.com'): string => {
+    const address = (label: string, domain = 'gmail.com'): NormalizedEmail => {
         counter += 1
-        return `victim-${label}-${String(counter)}-${String(now)}@${domain}`
+        return `victim-${label}-${String(counter)}-${String(now)}@${domain}` as NormalizedEmail
     }
 
     /** What an attacker prepares: an unverified account with the victim's address. */
@@ -123,7 +124,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             .insert(users)
             .values({
                 name: `pre-hijack-${String(counter)}`,
-                email: options.email,
+                email: options.email as NormalizedEmail,
                 emailVerifiedAt: options.verified === true ? new Date() : null,
                 phone: options.phone ?? null,
                 password:
@@ -158,14 +159,14 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 const body = url.startsWith('https://www.googleapis.com/')
                     ? {
                           id: profile.id,
-                          email: profile.email,
+                          email: profile.email as NormalizedEmail,
                           name: 'Google Person',
                           verified_email: profile.verified ?? true,
                           ...(profile.hd !== undefined ? { hd: profile.hd } : {}),
                       }
                     : {
                           id: profile.id,
-                          email: profile.email,
+                          email: profile.email as NormalizedEmail,
                           name: profile.name ?? 'Facebook Person',
                       }
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
@@ -268,7 +269,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 .insert(emailLinkVerifications)
                 .values({
                     userId: attacker.id,
-                    targetEmail: `attacker-${String(now)}@evil.test`,
+                    targetEmail: `attacker-${String(now)}@evil.test` as NormalizedEmail,
                     tokenHash: sha256(`d-${String(now)}`),
                     expiresAt: new Date(Date.now() + 60_000),
                 })
@@ -619,7 +620,10 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
         })
 
         it('is written while the session is current (control)', async () => {
-            const owner = await insertUser({ email: address('push-ok'), verified: true })
+            const owner = await insertUser({
+                email: address('push-ok'),
+                verified: true,
+            })
 
             const result = await pushSubscriptionService.createSubscription(
                 owner.id,

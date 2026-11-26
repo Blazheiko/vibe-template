@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { TokenHash } from '#app/domain/secrets.js'
 
 import { createHash } from 'node:crypto'
@@ -145,7 +146,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             .insert(users)
             .values({
                 name,
-                email: `${name}-${String(now)}@example.test`,
+                email: `${name}-${String(now)}@example.test` as NormalizedEmail,
                 password: await hashPassword(OLD_PASSWORD),
                 emailVerifiedAt: new Date(),
             })
@@ -438,7 +439,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             const created = await passwordResetRepository.create({
                 userId: user.id,
                 // feat-097: the address the link was mailed to.
-                targetEmail: user.email,
+                targetEmail: user.email!,
                 tokenHash: createHash('sha256').update(rawToken).digest('hex') as TokenHash,
                 expiresAt: new Date(Date.now() + 60_000),
             })
@@ -481,7 +482,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             await passwordResetRepository.create({
                 userId: user.id,
                 // feat-097: the address the link was mailed to.
-                targetEmail: user.email,
+                targetEmail: user.email!,
                 tokenHash: createHash('sha256').update(rawToken).digest('hex') as TokenHash,
                 expiresAt: new Date(Date.now() + 60_000),
             })

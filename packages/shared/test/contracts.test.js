@@ -456,3 +456,21 @@ test('the prompt and knowledge base schemas bound their fields', async () => {
     assert.ok(rejected(SupportKnowledgeBaseUpdateSchema, { category: 'c'.repeat(101) }))
     assert.ok(!rejected(SupportKnowledgeBaseUpdateSchema, { isActive: false }))
 })
+
+// feat-266: one schema for an e-mail a client sends, used by every form that takes one.
+test('EmailInputSchema takes a valid address of at most 255 characters, as the forms do', async () => {
+    const { EmailInputSchema, ForgotPasswordInputSchema, LinkEmailStartInputSchema } =
+        await import('../dist/schemas/index.js')
+    // 64 + 1 + 3 × 62 + 4: DNS labels stay under 64 characters.
+    const longest = `${'a'.repeat(64)}@${`${'b'.repeat(61)}.`.repeat(3)}test`
+    assert.equal(longest.length, 255)
+    for (const value of ['jane@example.com', ' Jane@Example.COM'.trim(), longest]) {
+        assert.ok(!(EmailInputSchema(value) instanceof type.errors), value)
+        assert.ok(!(ForgotPasswordInputSchema({ email: value }) instanceof type.errors), value)
+        assert.ok(!(LinkEmailStartInputSchema({ email: value }) instanceof type.errors), value)
+    }
+    for (const value of ['', 'jane', 'jane@', `${longest}x`]) {
+        assert.ok(EmailInputSchema(value) instanceof type.errors, value)
+        assert.ok(ForgotPasswordInputSchema({ email: value }) instanceof type.errors, value)
+    }
+})

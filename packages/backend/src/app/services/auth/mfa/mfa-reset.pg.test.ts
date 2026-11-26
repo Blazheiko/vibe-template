@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -74,7 +75,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
             .insert(users)
             .values({
                 name: 'mfa-reset',
-                email: `mfa-reset-${crypto.randomUUID()}@example.test`,
+                email: `mfa-reset-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: new Date(),
                 password: fields.password === undefined ? 'hash' : fields.password,
                 role: fields.role ?? 'user',

@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../../../test-support/ids.js'
 import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,7 +44,7 @@ describe.skipIf(!hasPg)('push delivery after a browser changes accounts', async 
     const insertUser = async (name: string): Promise<UserId> => {
         const [row] = await db
             .insert(users)
-            .values({ name, email: `${name}-${stamp}@example.test` })
+            .values({ name, email: `${name}-${stamp}@example.test` as NormalizedEmail })
             .returning({ id: users.id })
         if (row === undefined) throw new Error('user not inserted')
         return row.id

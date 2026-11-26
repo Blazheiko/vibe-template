@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { randomBytes } from 'node:crypto'
 
 import { eq } from 'drizzle-orm'
@@ -233,7 +234,7 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
             .insert(users)
             .values({
                 name: fields.name ?? 'staff-passkey',
-                email: `staff-passkey-${crypto.randomUUID()}@example.test`,
+                email: `staff-passkey-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 password: fields.password === false ? null : await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
                 role,
@@ -397,7 +398,11 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
         const browser = new Browser()
         await browser.request('GET', '/main/init')
         expect(
-            (await browser.request('POST', '/auth/forgot-password', { email: user.email })).status,
+            (
+                await browser.request('POST', '/auth/forgot-password', {
+                    email: user.email as NormalizedEmail,
+                })
+            ).status,
         ).toBe(200)
         await vi.waitFor(() => {
             expect(mails.some((item) => item.to === user.email)).toBe(true)

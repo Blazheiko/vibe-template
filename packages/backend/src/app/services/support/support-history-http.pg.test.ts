@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { Redis } from 'ioredis'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -172,7 +173,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat history over HTTP', async () 
             .insert(users)
             .values({
                 name: 'history-http',
-                email: `history-http-${String(createdUserIds.length)}-${String(now)}@example.test`,
+                email: `history-http-${String(createdUserIds.length)}-${String(now)}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
             })

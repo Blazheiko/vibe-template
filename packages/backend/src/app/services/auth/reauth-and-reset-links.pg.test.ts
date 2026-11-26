@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { OtpHash, SessionToken, TokenHash } from '#app/domain/secrets.js'
 import { hashPassword } from 'metautil'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -103,7 +104,9 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             .insert(users)
             .values({
                 name: `reauth-${String(counter)}`,
-                ...(withEmail ? { email: `reauth-${run}-${String(counter)}@example.test` } : {}),
+                ...(withEmail
+                    ? { email: `reauth-${run}-${String(counter)}@example.test` as NormalizedEmail }
+                    : {}),
                 password: passwordHash,
             })
             .returning()
@@ -187,7 +190,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
     ) =>
         authService.startEmailLink(
             user.id,
-            { email: `new-${run}-${String(counter)}@example.test` },
+            { email: `new-${run}-${String(counter)}@example.test` as NormalizedEmail },
             user.sessionToken,
             sessionStillStored,
             sessionAuth,
@@ -436,7 +439,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
 
         const result = await authService.startEmailLink(
             user.id,
-            { email: `gone-${run}@example.test` },
+            { email: `gone-${run}@example.test` as NormalizedEmail },
             user.sessionToken,
             () => Promise.resolve(false),
             freshPassword(),
@@ -455,7 +458,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
 
         const result = await authService.startEmailLink(
             user.id,
-            { email: `kept-${run}@example.test` },
+            { email: `kept-${run}@example.test` as NormalizedEmail },
             user.sessionToken,
             guard,
             freshPassword(),

@@ -49,6 +49,7 @@ import {
     type SessionToken,
     type TokenHash,
 } from '../app/domain/secrets.js'
+import type { NormalizedEmail } from '../app/domain/email.js'
 import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
@@ -104,7 +105,7 @@ export const users = pgTable(
     {
         id: bigserial('id', { mode: 'bigint' }).$type<UserId>().primaryKey(),
         name: varchar('name', { length: 100 }).notNull(),
-        email: varchar('email', { length: 255 }),
+        email: varchar('email', { length: 255 }).$type<NormalizedEmail>(),
         emailVerifiedAt: timestamp('email_verified_at'),
         password: varchar('password', { length: 255 }),
         phone: varchar('phone', { length: 20 }).unique(),
@@ -356,7 +357,7 @@ export const emailLinkVerifications = pgTable(
             .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
-        targetEmail: varchar('target_email', { length: 255 }).notNull(),
+        targetEmail: varchar('target_email', { length: 255 }).$type<NormalizedEmail>().notNull(),
         tokenHash: varchar('token_hash', { length: 64 }).$type<TokenHash>().notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         usedAt: timestamp('used_at'),
@@ -379,7 +380,7 @@ export const passwordResetTokens = pgTable(
             .references(() => users.id, { onDelete: 'cascade' }),
         // The address the link was mailed to (feat-097): a reset that claims an unverified
         // account proves this address, and only while it is still the account's one.
-        targetEmail: varchar('target_email', { length: 255 }),
+        targetEmail: varchar('target_email', { length: 255 }).$type<NormalizedEmail>(),
         tokenHash: varchar('token_hash', { length: 64 }).$type<TokenHash>().notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         usedAt: timestamp('used_at'),
@@ -431,7 +432,7 @@ export const oauthAccounts = pgTable(
             .references(() => users.id, { onDelete: 'cascade' }),
         provider: varchar('provider', { length: 50 }).notNull(),
         providerUserId: varchar('provider_user_id', { length: 255 }).notNull(),
-        providerEmail: varchar('provider_email', { length: 255 }),
+        providerEmail: varchar('provider_email', { length: 255 }).$type<NormalizedEmail>(),
         providerName: varchar('provider_name', { length: 255 }),
         providerAvatar: varchar('provider_avatar', { length: 500 }),
         createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -465,11 +466,13 @@ export const oauthLinkVerifications = pgTable(
             .references(() => users.id, { onDelete: 'cascade' }),
         provider: varchar('provider', { length: 50 }).notNull(),
         providerUserId: varchar('provider_user_id', { length: 255 }).notNull(),
-        providerEmail: varchar('provider_email', { length: 255 }).notNull(),
+        providerEmail: varchar('provider_email', { length: 255 })
+            .$type<NormalizedEmail>()
+            .notNull(),
         providerName: varchar('provider_name', { length: 255 }),
         providerAvatar: varchar('provider_avatar', { length: 500 }),
         // The account's address when the link was issued: confirmed only while it is unchanged.
-        targetEmail: varchar('target_email', { length: 255 }).notNull(),
+        targetEmail: varchar('target_email', { length: 255 }).$type<NormalizedEmail>().notNull(),
         sessionBindingHash: varchar('session_binding_hash', { length: 64 })
             .$type<SessionBindingHash>()
             .notNull(),

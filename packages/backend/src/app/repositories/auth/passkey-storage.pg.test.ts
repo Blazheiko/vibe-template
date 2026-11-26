@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -25,7 +26,10 @@ describe.skipIf(!hasPg)('passkey storage on PostgreSQL', async () => {
     const newUser = async (): Promise<UserId> => {
         const [user] = await db
             .insert(users)
-            .values({ name: 'passkey-storage', email: `${crypto.randomUUID()}@example.test` })
+            .values({
+                name: 'passkey-storage',
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
+            })
             .returning({ id: users.id })
         if (user === undefined) throw new Error('user not inserted')
         created.push(user.id)

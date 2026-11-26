@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { and, eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -126,7 +127,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             .insert(users)
             .values({
                 name: 'privileged-revocation',
-                email: `privileged-revocation-${crypto.randomUUID()}@example.test`,
+                email: `privileged-revocation-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: new Date(),
                 password: 'hash',
                 role,

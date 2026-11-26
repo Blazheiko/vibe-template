@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { Redis } from 'ioredis'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -179,7 +180,7 @@ describe.skipIf(!hasPg || !hasRedis)(
                         json: () =>
                             Promise.resolve({
                                 id: profile.id,
-                                email: profile.email,
+                                email: profile.email as NormalizedEmail,
                                 name: 'Google Person',
                                 verified_email: true,
                             }),
@@ -189,7 +190,7 @@ describe.skipIf(!hasPg || !hasRedis)(
         }
 
         const mfaAccount = async (verified: boolean) => {
-            const email = `mfa-oauth-${crypto.randomUUID()}@gmail.com`
+            const email = `mfa-oauth-${crypto.randomUUID()}@gmail.com` as NormalizedEmail
             const [row] = await db
                 .insert(users)
                 .values({ name: 'mfa-oauth', email, emailVerifiedAt: verified ? new Date() : null })

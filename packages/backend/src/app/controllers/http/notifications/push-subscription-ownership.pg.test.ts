@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../../../../test-support/ids.js'
 
 import { eq } from 'drizzle-orm'
@@ -109,7 +110,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     const insertUser = async (name: string): Promise<UserId> => {
         const [row] = await db
             .insert(users)
-            .values({ name, email: `${name}-${String(now)}@example.test` })
+            .values({ name, email: `${name}-${String(now)}@example.test` as NormalizedEmail })
             .returning({ id: users.id, sessionToken: users.sessionToken })
         if (row === undefined) throw new Error('user not inserted')
         sessionTokens.set(String(row.id), row.sessionToken)

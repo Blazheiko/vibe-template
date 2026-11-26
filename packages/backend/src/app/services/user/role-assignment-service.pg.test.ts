@@ -1,4 +1,5 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
@@ -56,7 +57,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
             .insert(users)
             .values({
                 name: `role-assign-${String(counter)}`,
-                email: `role-assign-${String(counter)}-${stamp}@example.test`,
+                email: `role-assign-${String(counter)}-${stamp}@example.test` as NormalizedEmail,
                 emailVerifiedAt: verified ? new Date() : null,
                 role,
             })

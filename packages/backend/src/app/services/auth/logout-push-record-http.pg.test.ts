@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -128,7 +129,7 @@ describe.skipIf(!hasPg || !hasRedis)('POST /auth/logout and the push record', as
             .insert(users)
             .values({
                 name,
-                email: `${name}-${crypto.randomUUID()}@example.test`,
+                email: `${name}-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
             })

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { UserId } from '#app/domain/ids.js'
 import { uid } from '../../../test-support/ids.js'
 
@@ -35,7 +36,7 @@ describe.skipIf(!hasPg)('user_preferences on PostgreSQL', async () => {
     const createUser = async (): Promise<UserId> => {
         const [user] = await db
             .insert(schema.users)
-            .values({ name: 'prefs', email: `prefs-${randomUUID()}@x.test` })
+            .values({ name: 'prefs', email: `prefs-${randomUUID()}@x.test` as NormalizedEmail })
             .returning({ id: schema.users.id })
         return user!.id
     }

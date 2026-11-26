@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../../../test-support/ids.js'
 
 import { eq } from 'drizzle-orm'
@@ -134,7 +135,7 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
             .insert(users)
             .values({
                 name,
-                email: `role-http-${String(now)}-${String(inserted)}@example.test`,
+                email: `role-http-${String(now)}-${String(inserted)}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: verified ? new Date() : null,
                 role,

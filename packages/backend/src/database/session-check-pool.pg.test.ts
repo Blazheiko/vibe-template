@@ -1,4 +1,5 @@
 import { createServer, connect, type Server, type Socket } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../test-support/ids.js'
 
 import { eq } from 'drizzle-orm'
@@ -64,7 +65,10 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
     beforeAll(async () => {
         const [row] = await db
             .insert(users)
-            .values({ name: 'check-pool', email: `check-pool-${String(now)}@example.test` })
+            .values({
+                name: 'check-pool',
+                email: `check-pool-${String(now)}@example.test` as NormalizedEmail,
+            })
             .returning()
         if (row === undefined) throw new Error('user not inserted')
         userId = row.id

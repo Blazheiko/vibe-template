@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { UserId } from '#app/domain/ids.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -49,7 +50,10 @@ describe.skipIf(!hasPg)('oauth_accounts on PostgreSQL', async () => {
     it('links a provider account and finds it again by provider and provider id', async () => {
         const [user] = await db
             .insert(users)
-            .values({ name: 'oauth-test', email: `${crypto.randomUUID()}@example.test` })
+            .values({
+                name: 'oauth-test',
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
+            })
             .returning({ id: users.id })
         if (user === undefined) throw new Error('user not inserted')
         created.push(user.id)
@@ -58,7 +62,7 @@ describe.skipIf(!hasPg)('oauth_accounts on PostgreSQL', async () => {
             userId: user.id,
             provider: 'github',
             providerUserId: `gh-${crypto.randomUUID()}`,
-            providerEmail: 'someone@example.test',
+            providerEmail: 'someone@example.test' as NormalizedEmail,
             providerName: 'Someone',
             providerAvatar: null,
         })

@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -122,7 +123,7 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
             .insert(users)
             .values({
                 name,
-                email: `${name}-${String(now)}@example.test`,
+                email: `${name}-${String(now)}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
             })

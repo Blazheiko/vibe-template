@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -271,7 +272,8 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendLinkVerificationEmail · unknown user',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(undefined),
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, SESSION),
         error: err(404, 'not_found', 'User not found'),
     },
     {
@@ -280,7 +282,8 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(
                 user({ email: null, sessionToken: 'session-rotated' }),
             ),
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, SESSION),
         error: err(401, 'unauthorized', 'Session has been revoked'),
         after: () => {
             expect(linkRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
@@ -291,7 +294,8 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendLinkVerificationEmail · no presented session token',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(user({ email: null })),
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', undefined),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, undefined),
         error: err(401, 'unauthorized', 'Session has been revoked'),
         after: () => {
             expect(linkRepositoryMock.create).not.toHaveBeenCalled()
@@ -301,7 +305,8 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendLinkVerificationEmail · the locked account already has an address',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(user()),
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, SESSION),
         error: badRequest('Email is already linked to this account'),
         after: () => {
             expect(linkRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
@@ -315,7 +320,8 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, SESSION),
         throws: true,
         after: () => {
             expect(linkRepositoryMock.create).not.toHaveBeenCalled()
@@ -327,7 +333,8 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, SESSION),
         throws: true,
     },
     {
@@ -337,7 +344,8 @@ const ROWS: readonly Row[] = [
             linkRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, SESSION),
         throws: true,
     },
     {
@@ -347,7 +355,8 @@ const ROWS: readonly Row[] = [
             linkRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
+        call: (s) =>
+            s.sendLinkVerificationEmail(uid(7), 'new@example.com' as NormalizedEmail, SESSION),
         ok: { message: 'Verification email will be sent shortly' },
         after: () => {
             expect(linkRepositoryMock.create).toHaveBeenCalledWith(

@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { TokenHash } from '#app/domain/secrets.js'
 
 import { eq } from 'drizzle-orm'
@@ -142,7 +143,7 @@ describe.skipIf(!hasPg || !hasRedis)('account sessions over HTTP (feat-233)', as
             .insert(users)
             .values({
                 name: 'sessions',
-                email: `sessions-${String(now)}-${String(inserted)}@example.test`,
+                email: `sessions-${String(now)}-${String(inserted)}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
             })

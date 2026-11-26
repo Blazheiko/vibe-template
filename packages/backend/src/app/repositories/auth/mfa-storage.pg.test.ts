@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { RecoveryCodeHash } from '#app/domain/secrets.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -28,7 +29,10 @@ describe.skipIf(!hasPg)('MFA storage on PostgreSQL', async () => {
     const newUser = async (): Promise<UserId> => {
         const [user] = await db
             .insert(users)
-            .values({ name: 'mfa-storage', email: `${crypto.randomUUID()}@example.test` })
+            .values({
+                name: 'mfa-storage',
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
+            })
             .returning({ id: users.id })
         if (user === undefined) throw new Error('user not inserted')
         created.push(user.id)

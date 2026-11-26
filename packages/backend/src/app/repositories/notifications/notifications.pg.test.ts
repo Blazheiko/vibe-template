@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -19,7 +20,10 @@ describe.skipIf(!hasPg)('notification repositories on PostgreSQL', async () => {
     const newUser = async (): Promise<UserId> => {
         const [row] = await db
             .insert(users)
-            .values({ name: 'notifications-test', email: `${crypto.randomUUID()}@example.test` })
+            .values({
+                name: 'notifications-test',
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
+            })
             .returning({ id: users.id })
         if (row === undefined) throw new Error('user not inserted')
         created.push(row.id)

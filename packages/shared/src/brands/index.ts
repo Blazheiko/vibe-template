@@ -1,8 +1,6 @@
 export { EntityIdSchema, EntityIdStringSchema, type EntityId } from './ids.js'
 
 export {
-    EmailSchema,
-    type Email,
     PositiveIntSchema,
     type PositiveInt,
     NonNegativeIntSchema,

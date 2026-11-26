@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { RawToken, SessionToken } from '#app/domain/secrets.js'
 import type { Redis } from 'ioredis'
 import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
@@ -127,7 +128,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             .insert(users)
             .values({
                 name,
-                email: `${name}-${String(now)}@example.test`,
+                email: `${name}-${String(now)}@example.test` as NormalizedEmail,
                 password: await hashPassword(OLD_PASSWORD),
             })
             .returning()
@@ -658,7 +659,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             await passwordResetRepository.create({
                 userId: user.id,
                 tokenHash: hashToken(token as RawToken),
-                targetEmail: user.email,
+                targetEmail: user.email!,
                 expiresAt: new Date(Date.now() + 600_000),
             })
 

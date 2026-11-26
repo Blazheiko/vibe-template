@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -104,7 +105,7 @@ describe.skipIf(!hasPg)(
                 .insert(users)
                 .values({
                     name: 'staff-factors',
-                    email: `staff-factors-${crypto.randomUUID()}@example.test`,
+                    email: `staff-factors-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                     emailVerifiedAt: new Date(),
                     password: 'hash',
                     role,

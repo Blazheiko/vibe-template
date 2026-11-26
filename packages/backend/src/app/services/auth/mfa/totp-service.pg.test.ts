@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -62,7 +63,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
             .insert(users)
             .values({
                 name: 'totp',
-                email: `${crypto.randomUUID()}@example.test`,
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: new Date(),
                 password: 'hash',
             })
@@ -184,7 +185,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
             .insert(users)
             .values({
                 name: 'totp',
-                email: `${crypto.randomUUID()}@example.test`,
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: new Date(),
                 password: null,
             })
@@ -219,7 +220,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
             .insert(users)
             .values({
                 name: 'totp',
-                email: `${crypto.randomUUID()}@example.test`,
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: new Date(),
                 password: null,
             })
@@ -467,7 +468,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
             .insert(users)
             .values({
                 name: 'no contact',
-                email: `${crypto.randomUUID()}@example.test`,
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 password: 'h',
             })
             .returning({ id: users.id, sessionToken: users.sessionToken })

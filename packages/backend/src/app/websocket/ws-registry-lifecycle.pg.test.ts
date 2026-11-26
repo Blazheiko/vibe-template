@@ -1,4 +1,5 @@
 import { connect, createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -124,7 +125,7 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
             .insert(users)
             .values({
                 name: 'ws-reload',
-                email: `ws-reload-${String(now)}-${String(inserted)}@example.test`,
+                email: `ws-reload-${String(now)}-${String(inserted)}@example.test` as NormalizedEmail,
             })
             .returning()
         if (row === undefined) throw new Error('user not inserted')

@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { UserId } from '#app/domain/ids.js'
 import { Redis } from 'ioredis'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -78,7 +79,7 @@ describe.skipIf(!hasPg || !hasRedis)('user:set-role (feat-240)', async () => {
 
     const insertUser = async (verified: boolean) => {
         counter += 1
-        const email = `cli-role-${String(counter)}-${stamp}@example.test`
+        const email = `cli-role-${String(counter)}-${stamp}@example.test` as NormalizedEmail
         const [row] = await db
             .insert(users)
             .values({ name: 'cli', email, emailVerifiedAt: verified ? new Date() : null })
