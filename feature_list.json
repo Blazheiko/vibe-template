@@ -2661,8 +2661,8 @@
             "owner": "Blazheiko",
             "branch": "feat/branded-time-units",
             "dependencies": ["feat-262"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #859 (merge f7e41e1). CI: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45831328710); test-redis 20 files / 213 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45831328623); make check clean (backend 3899 tests); docs:build + docs:verify passed."
         },
         {
             "id": "feat-268",
