@@ -87,7 +87,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
     const { mfaResetService } = await import('./mfa-reset-service.js')
     const { loadMfaFactors } = await import('./mfa-account.js')
     const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
-    const { underUserRowLock } = await import('#app/services/user/session-list-service.js')
+    const { sessionDeletionLock } = await import('#app/services/user/session-list-service.js')
     const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
     const { registerSessionDeletionLock, SessionDeletionDeferredError } =
         await import('#vendor/utils/session/session-deletion-lock.js')
@@ -361,7 +361,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
                 await waitForLockWaiters((q) => pool.query(q), 1)
                 // From the other session: end the one that sent the write.
                 const revoked = await sessionListService.revoke({
-                    userId: String(admin.id),
+                    userId: admin.id,
                     current: other.info,
                     publicId: requesting.publicId,
                     sessionStored: other.isStored,
@@ -405,7 +405,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             let revocationDone = false
             const revocation = sessionListService
                 .revoke({
-                    userId: String(admin.id),
+                    userId: admin.id,
                     current: other.info,
                     publicId: requesting.publicId,
                     sessionStored: other.isStored,
@@ -426,7 +426,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
 
         describe('a plain logout of the session that sent the write', () => {
             beforeAll(() => {
-                registerSessionDeletionLock(underUserRowLock)
+                registerSessionDeletionLock(sessionDeletionLock)
             })
             afterAll(() => {
                 registerSessionDeletionLock(null)
@@ -497,7 +497,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             '%s that replaces the session that sent the write',
             (_label, signInOver) => {
                 beforeAll(() => {
-                    registerSessionDeletionLock(underUserRowLock)
+                    registerSessionDeletionLock(sessionDeletionLock)
                 })
                 afterAll(() => {
                     registerSessionDeletionLock(null)

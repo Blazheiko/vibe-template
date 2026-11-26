@@ -1,5 +1,6 @@
+import { nowUnixMs } from 'shared/brand'
 import { roleHasPermission, type Permission } from 'shared/access'
-import { asUserId } from '#app/domain/ids.js'
+import { parseUserId, type UserId } from '#app/domain/ids.js'
 import { MFA_REASONS } from 'shared/mfa'
 
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
@@ -25,13 +26,13 @@ function deny(context: HttpContext, reason?: string): void {
  * uses its permissions only with the staff factor (`mfa_required`) and a session that proved it
  * recently (`mfa_session_required`). The reason is the same for every permission. Null: passes.
  */
-async function staffMfaRefusal(context: HttpContext, userId: string): Promise<string | null> {
+async function staffMfaRefusal(context: HttpContext, userId: UserId): Promise<string | null> {
     if (!mfaConfig.requiredForStaff) return null
-    const factors = await loadMfaFactors(asUserId(userId))
+    const factors = await loadMfaFactors(userId)
     if (!staffPolicy().enrolled({ totp: factors.totp !== undefined, passkeys: factors.passkeys })) {
         return MFA_REASONS.mfaRequired
     }
-    if (!staffSessionMeets(context.session.sessionInfo?.data.auth, Date.now())) {
+    if (!staffSessionMeets(context.session.sessionInfo?.data.auth, nowUnixMs())) {
         return MFA_REASONS.mfaSessionRequired
     }
     return null
@@ -44,12 +45,14 @@ async function staffMfaRefusal(context: HttpContext, userId: string): Promise<st
  */
 export function permissionGuard(permission: Permission): Middleware {
     return async (context: HttpContext, next: () => Promise<void>): Promise<void> => {
-        const userId = context.auth.getUserId()
+        // feat-271 (Р13): read once by its brand constructor; a session id that is not a row id
+        // is refused like an anonymous request, never a 500.
+        const userId = parseUserId(context.auth.getUserId())
         if (userId === null) {
             deny(context)
             return
         }
-        const role = await userRoleService.findRole(asUserId(userId))
+        const role = await userRoleService.findRole(userId)
         if (role === undefined || !roleHasPermission(role, permission)) {
             deny(context)
             return

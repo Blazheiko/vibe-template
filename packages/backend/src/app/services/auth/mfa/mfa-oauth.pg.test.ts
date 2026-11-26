@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import { and, eq } from 'drizzle-orm'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import type { Redis } from 'ioredis'
@@ -215,7 +216,7 @@ describe.skipIf(!hasPg || !hasRedis)(
                 )
                 return recoveryCodes.issue(row.id, tx)
             })
-            return { row, email, code: () => hotp(secret, totpStepAt(Date.now())), codes }
+            return { row, email, code: () => hotp(secret, totpStepAt(nowUnixMs())), codes }
         }
 
         const linksOf = (userId: UserId) =>

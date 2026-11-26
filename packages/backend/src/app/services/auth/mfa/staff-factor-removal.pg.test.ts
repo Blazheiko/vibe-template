@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import { and, eq, sql } from 'drizzle-orm'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
@@ -87,7 +88,7 @@ describe.skipIf(!hasPg)(
             await pool.end()
         })
 
-        const NOW = Date.now()
+        const NOW = nowUnixMs()
         const iso = (offsetSeconds = 0): string =>
             new Date(NOW + offsetSeconds * 1000).toISOString()
 

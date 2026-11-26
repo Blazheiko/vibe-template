@@ -103,7 +103,7 @@ export const VERIFY_PASSWORD_INVALID = 'invalid_password'
 
 /** The registration link's owner check by password (feat-097). */
 async function checkOwnerPassword(
-    owner: { id: bigint; password: string | null },
+    owner: { id: UserId; password: string | null },
     password: string | undefined,
 ): Promise<AppResult<void>> {
     if (password === undefined || password === '') {

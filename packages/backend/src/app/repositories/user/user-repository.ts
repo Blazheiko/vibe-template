@@ -140,12 +140,12 @@ export interface IUserRepository {
     /** The names of these users by id (feat-235: the audit log); a deleted user is absent. */
     findNamesByIds(ids: readonly UserId[]): Promise<Map<string, string>>
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
-    findSessionToken(id: UserId): Promise<string | undefined>
+    findSessionToken(id: UserId): Promise<SessionToken | undefined>
     /**
      * The current sessionToken of these users by id; a user that no longer exists is absent.
      * Bounded like findSessionToken.
      */
-    findSessionTokensByIds(ids: UserId[]): Promise<Map<string, string>>
+    findSessionTokensByIds(ids: UserId[]): Promise<Map<string, SessionToken>>
     /**
      * Sets a new password and rotates the sessionToken only if the stored password is
      * still `currentPassword` (null/'' for an account that has none yet) and the

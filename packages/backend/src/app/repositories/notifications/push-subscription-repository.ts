@@ -144,7 +144,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
             subscriptionsData.map((sub) => sub.id),
             LOGS_PER_SUBSCRIPTION,
         )
-        const logsBySubscription = new Map<bigint, PushSubscriptionLogSummary[]>()
+        const logsBySubscription = new Map<PushSubscriptionId, PushSubscriptionLogSummary[]>()
         for (const { subscriptionId, ...log } of logs) {
             if (subscriptionId === null) continue
             const list = logsBySubscription.get(subscriptionId) ?? []

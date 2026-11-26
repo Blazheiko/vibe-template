@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import { roleHasPermission, type Permission } from 'shared/access'
 import { MFA_REASONS } from 'shared/mfa'
 
@@ -25,7 +26,7 @@ export function wsPermissionGuard(permission: Permission): Middleware<WsContext>
         }
         // feat-247 (Р11): a staff permission needs a session that meets the staff MFA rule, checked
         // with the current time on every message (always met while the rule is off).
-        if (!staffSessionMeets(userData.auth, Date.now())) {
+        if (!staffSessionMeets(userData.auth, nowUnixMs())) {
             context.responseData.data = mapWsControllerError(
                 context,
                 forbidden('Access denied', MFA_REASONS.mfaSessionRequired),

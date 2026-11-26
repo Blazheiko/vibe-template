@@ -1,3 +1,4 @@
+import { nowUnixMs, type UnixMs } from 'shared/brand'
 import { Result } from 'better-result'
 import {
     isProofAdmissible,
@@ -28,7 +29,7 @@ export interface ProofGate {
     action: ProofAction
     account: MfaAccount
     auth: SessionAuthState | undefined
-    now?: number
+    now?: UnixMs
     /** Rows 9–10: the proofs the staff policy accepts. */
     staffStepUpProofs?: readonly ProofMethod[]
 }
@@ -44,7 +45,7 @@ const decide = (gate: ProofGate, windows: ProofWindows): ProofDecision =>
         action: gate.action,
         account: proofAccountOf(gate.account),
         auth: gate.auth,
-        now: gate.now ?? Date.now(),
+        now: gate.now ?? nowUnixMs(),
         windows,
         ...(gate.staffStepUpProofs !== undefined
             ? { staffStepUpProofs: gate.staffStepUpProofs }
@@ -103,7 +104,7 @@ export function keptProofRefusal(gate: ProofGate & { proof: AcceptedProof }): Ap
         account: proofAccountOf(gate.account),
         proof: gate.proof,
         auth: gate.auth,
-        now: gate.now ?? Date.now(),
+        now: gate.now ?? nowUnixMs(),
         ...(gate.staffStepUpProofs !== undefined
             ? { staffStepUpProofs: gate.staffStepUpProofs }
             : {}),

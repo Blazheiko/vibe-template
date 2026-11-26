@@ -1,3 +1,4 @@
+import { nowUnixMs, type UnixMs } from 'shared/brand'
 import { Result } from 'better-result'
 import type { SessionAuthState } from 'shared/mfa'
 import { MFA_REASONS } from 'shared/mfa'
@@ -32,7 +33,7 @@ const clearTimer = (ws: MyWebSocket): void => {
     timers.delete(ws)
 }
 
-const scheduleTimer = (ws: MyWebSocket, deadline: number, now: number): void => {
+const scheduleTimer = (ws: MyWebSocket, deadline: number, now: UnixMs): void => {
     clearTimer(ws)
     if (!Number.isFinite(deadline)) return
     const delay = Math.min(Math.max(0, deadline - now), MAX_TIMER_DELAY_MS)
@@ -74,7 +75,7 @@ function onDeadline(ws: MyWebSocket, deadline: number): void {
     try {
         const userData = getUserData(ws)
         if (userData.closed === true) return
-        const now = Date.now()
+        const now = nowUnixMs()
         // A delay longer than a timer holds, or a clock that ran slow: not yet.
         if (now < deadline) {
             scheduleTimer(ws, deadline, now)
@@ -88,7 +89,7 @@ function onDeadline(ws: MyWebSocket, deadline: number): void {
 }
 
 export const adminWsChannelService = {
-    subscribeCurrentAdminConnection(ws: MyWebSocket, now = Date.now()): AppResult<void> {
+    subscribeCurrentAdminConnection(ws: MyWebSocket, now = nowUnixMs()): AppResult<void> {
         const userData = getUserData(ws)
         if (
             userData.adminChannelPaused === true ||
@@ -142,7 +143,7 @@ export const adminWsChannelService = {
     refreshConnectionAuth(
         ws: MyWebSocket,
         auth: SessionAuthState | undefined,
-        now = Date.now(),
+        now = nowUnixMs(),
     ): boolean {
         const userData = getUserData(ws)
         if (userData.closed === true) return false

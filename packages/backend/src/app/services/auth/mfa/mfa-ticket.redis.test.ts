@@ -400,3 +400,25 @@ describe.skipIf(!hasRedis)('MFA ticket TTL', () => {
         expect(read).toBeLessThanOrEqual(120)
     })
 })
+
+// feat-271 (Р13): the user ids of a stored ticket are row ids, checked on load.
+describe.skipIf(!hasRedis)('MFA ticket store: user ids on load', () => {
+    it.each([['abc'], ['0'], ['007'], [7]])(
+        'reads a ticket whose userId is %j as gone',
+        async (userId) => {
+            const id = newTicketId()
+            await mfaTicketStore.create(id, { ...ticket(), userId } as unknown as Ticket, 300)
+            expect(await mfaTicketStore.read(id)).toBeNull()
+        },
+    )
+
+    it('reads a ticket whose plan names no row id as gone', async () => {
+        const id = newTicketId()
+        await mfaTicketStore.create(
+            id,
+            { ...ticket(), plan: { ...plan, userId: 'abc' } } as unknown as Ticket,
+            300,
+        )
+        expect(await mfaTicketStore.read(id)).toBeNull()
+    })
+})

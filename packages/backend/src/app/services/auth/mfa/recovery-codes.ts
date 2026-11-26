@@ -7,7 +7,6 @@ import {
     hashRecoveryCode as hashRecoveryCodeWith,
     newRecoveryCode,
     normalizeRecoveryCode as normalizeRawRecoveryCode,
-    rawRecoveryCodeOf,
     type NormalizedRecoveryCode,
     type RawRecoveryCode,
     type RecoveryCodeHash,
@@ -24,9 +23,12 @@ export const RECOVERY_CODE_COUNT = 10
 /** A fresh code, grouped by four for reading. */
 export const generateRecoveryCode = (): RawRecoveryCode => newRecoveryCode()
 
-/** What the user typed, in the stored form, or null when it cannot be a code. */
-export const normalizeRecoveryCode = (input: string): NormalizedRecoveryCode | null =>
-    normalizeRawRecoveryCode(rawRecoveryCodeOf(input))
+/**
+ * What the user typed, in the stored form, or null when it cannot be a code. feat-271 (T29): it
+ * takes the raw code, so a hash or a normalized code cannot be normalized again by mistake.
+ */
+export const normalizeRecoveryCode = (input: RawRecoveryCode): NormalizedRecoveryCode | null =>
+    normalizeRawRecoveryCode(input)
 
 /** The stored hash of a normalized code, under the OTP key of the config. */
 export const hashRecoveryCode = (code: NormalizedRecoveryCode): RecoveryCodeHash =>
@@ -52,7 +54,7 @@ export const recoveryCodes = {
     },
 
     /** Spends the code the user typed: true only for the request that marked it used. */
-    async consume(userId: UserId, input: string, executor?: DbExecutor): Promise<boolean> {
+    async consume(userId: UserId, input: RawRecoveryCode, executor?: DbExecutor): Promise<boolean> {
         const normalized = normalizeRecoveryCode(input)
         if (normalized === null) return false
         return recoveryCodeRepository.consume(userId, hashRecoveryCode(normalized), executor)

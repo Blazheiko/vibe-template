@@ -1,3 +1,4 @@
+import { nowUnixMs, type UnixMs, addMs, toMs } from 'shared/brand'
 import { Result } from 'better-result'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { validatePassword } from 'metautil'
@@ -59,7 +60,7 @@ export interface StepUpRequest {
     userId: UserId
     session: Session
     presentedSessionToken: SessionToken | undefined
-    now?: number
+    now?: UnixMs
     /** For the audit event of a counter that went back (feat-246). */
     request?: AuditRequest
 }
@@ -109,7 +110,7 @@ export const stepUpService = {
         }
         const options = await authenticationOptions(keys)
         const expiresAt = new Date(
-            (request.now ?? Date.now()) + webauthnConfig.challengeTtlSeconds * 1000,
+            addMs(request.now ?? nowUnixMs(), toMs(webauthnConfig.challengeTtlSeconds)),
         ).toISOString()
         const stored = await request.session.updateSessionData({
             [PASSKEY_REAUTH_KEYS.challenge]: options.challenge,
@@ -179,7 +180,7 @@ export const stepUpService = {
             if (Result.isError(verified)) return Result.err(verified.error)
         }
 
-        const at = new Date(request.now ?? Date.now()).toISOString()
+        const at = new Date(request.now ?? nowUnixMs()).toISOString()
         const updated = await request.session.updateSessionAuth((current) =>
             withVerified(current, PROOF_METHOD_REF[input.proof], at),
         )
@@ -211,7 +212,7 @@ async function checkPasskeyStepUp(
         Object.values(PASSKEY_REAUTH_KEYS),
     )
     if (consumed !== 'consumed') return Result.err(passkeyRefused())
-    if (Date.parse(expiresAt) <= (request.now ?? Date.now())) return Result.err(passkeyRefused())
+    if (Date.parse(expiresAt) <= (request.now ?? nowUnixMs())) return Result.err(passkeyRefused())
 
     const credential = await webauthnCredentialRepository.findByCredentialId(
         fromBase64Url(response.id),

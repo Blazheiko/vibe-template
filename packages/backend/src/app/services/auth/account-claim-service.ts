@@ -16,6 +16,7 @@ import {
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import type { AuditEventInput } from '#app/services/audit/audit-service.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { invalidatePendingPhoneChallenges } from '#app/services/auth/phone-challenges.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
@@ -35,7 +36,9 @@ export const ALL_TOKEN_REPOSITORIES = [
 ] as const
 
 /** Whether the locked row still has the address the proof is about (claim step 2). */
-export function addressMatches(user: UserRow, provenEmail: string): boolean {
+export function addressMatches(user: UserRow, provenEmail: NormalizedEmail): boolean {
+    // Both sides normalized again: a stored row (the user's or a token's target) may predate the
+    // normalization of its writer, and normalizeEmail is idempotent.
     return user.email !== null && normalizeEmail(user.email) === normalizeEmail(provenEmail)
 }
 

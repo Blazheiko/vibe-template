@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import { isStaffRole, type Role } from 'shared/access'
 import {
     MFA_REASONS,
@@ -27,7 +28,7 @@ export const staffFactorFor = (role: Role): StaffFactorMode | null =>
 /** Whether a staff session may use staff permissions now (always, while the rule is off). */
 export function staffSessionMeets(
     auth: SessionAuthState | undefined | null,
-    now = Date.now(),
+    now = nowUnixMs(),
 ): boolean {
     if (!mfaConfig.requiredForStaff) return true
     return staffSessionOk(staffPolicy(), auth, now, mfaConfig.staffFactorMaxAgeHours)
@@ -36,7 +37,7 @@ export function staffSessionMeets(
 /** When the staff session stops meeting the rule, in ms; null when it does not now. */
 export function staffSessionDeadline(
     auth: SessionAuthState | undefined | null,
-    now = Date.now(),
+    now = nowUnixMs(),
 ): number | null {
     if (!mfaConfig.requiredForStaff) return Number.POSITIVE_INFINITY
     return staffPolicy().sessionDeadline(auth, now, mfaConfig.staffFactorMaxAgeHours)

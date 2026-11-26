@@ -26,8 +26,8 @@ export interface PushSubscriptionStatisticsResult {
 }
 
 export async function getPushSubscriptionStatistics(
-    subscriptionId: PushSubscriptionId,
     userId: UserId,
+    subscriptionId: PushSubscriptionId,
 ): Promise<PushSubscriptionStatisticsResult | undefined> {
     const subscription = await pushSubscriptionRepository.findForUser(userId, subscriptionId)
     if (subscription === undefined) {

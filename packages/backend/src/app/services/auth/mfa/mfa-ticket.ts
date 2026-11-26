@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto'
-import { seconds, type Milliseconds, type Seconds, type UnixMs } from 'shared/brand'
+import {
+    isValidEntityId,
+    seconds,
+    type Milliseconds,
+    type Seconds,
+    type UnixMs,
+} from 'shared/brand'
 
 import redis, { withRedis } from '#database/redis.js'
 import { msArg, setWithTtlSeconds } from '#app/services/shared/redis-ttl.js'
@@ -296,6 +302,17 @@ const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[
 const parseTicket = (raw: string): MfaTicket | null => {
     try {
         const ticket = JSON.parse(raw) as MfaTicket
+        // feat-271 (Р13): the user ids are read as row ids on load, so a corrupt record is a
+        // gone ticket here, never a throw of asUserId in the sign-in that reads it.
+        if (
+            typeof ticket.userId !== 'string' ||
+            !isValidEntityId(ticket.userId) ||
+            (ticket.plan !== undefined &&
+                (typeof ticket.plan.userId !== 'string' || !isValidEntityId(ticket.plan.userId)))
+        ) {
+            logger.warn('MFA ticket holds a user id that is not a row id; treated as gone')
+            return null
+        }
         return {
             ...ticket,
             reservations: asArray(ticket.reservations),
@@ -358,7 +375,7 @@ export const mfaTicketStore = {
         ticketId: MfaTicketId,
         binding: MfaBinding,
         reservationId: MfaReservationId,
-        now: UnixMs,
+        nowMs: UnixMs,
         reservationTtlMs: Milliseconds,
         /** The logical attempt; a repeat of the same request carries the same one. */
         attemptId: MfaAttemptId = mfaAttemptIdOf(reservationId),
@@ -369,7 +386,7 @@ export const mfaTicketStore = {
                 1,
                 key(ticketId),
                 binding,
-                String(now),
+                String(nowMs),
                 msArg(reservationTtlMs),
                 String(MFA_MAX_FAILURES),
                 reservationId,
@@ -412,7 +429,7 @@ export const mfaTicketStore = {
     async capture(
         ticketId: MfaTicketId,
         reservationId: MfaReservationId,
-        now: UnixMs,
+        nowMs: UnixMs,
         reservationTtlMs: Milliseconds,
         completion: { completionId: MfaCompletionId; xid: string; plan: LoginPlan },
         challenge: CheckedChallenge | null = null,
@@ -424,7 +441,7 @@ export const mfaTicketStore = {
                 key(ticketId),
                 challenge?.key ?? key(ticketId),
                 reservationId,
-                String(now),
+                String(nowMs),
                 msArg(reservationTtlMs),
                 completion.completionId,
                 completion.xid,

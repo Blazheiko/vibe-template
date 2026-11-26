@@ -14,7 +14,7 @@ import type * as UserEventBusModule from '#app/services/communication/user-event
 import { notificationRepository } from '#app/repositories/index.js'
 import { pushNotificationSenderService } from '#app/services/notifications/push-notification-sender-service.js'
 import { pushTextOf } from '#app/services/notifications/notification-push-texts.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { NotificationId, UserId } from '#app/domain/ids.js'
 
 // feat-236 (Р5): a notification is stored first, then the user's connections are told and the
 // push goes. Best effort, after the business change has committed: a failure of any step is
@@ -28,7 +28,8 @@ const loadBus = (): Promise<typeof UserEventBusModule> =>
     (busModule ??= import('#app/services/communication/user-event-bus.js'))
 
 /** The page a push opens when its notification is stored (Р7): it marks it read, then goes on. */
-export const notificationOpenPath = (id: bigint): string => `/notifications/${String(id)}/open`
+export const notificationOpenPath = (id: NotificationId): string =>
+    `/notifications/${String(id)}/open`
 
 /** Kinds whose push is skipped while the user has the app open on this instance (Р5). */
 const SKIP_PUSH_IF_ONLINE: ReadonlySet<NotificationKind> = new Set(['support.reply'])
@@ -37,7 +38,7 @@ export interface NotificationDelivery {
     /** False: the params or the link failed the checks, nothing was stored or sent. */
     valid: boolean
     /** The id of the stored notification, or null when nothing was stored. */
-    id: bigint | null
+    id: NotificationId | null
     signalled: boolean
     pushed: boolean
 }

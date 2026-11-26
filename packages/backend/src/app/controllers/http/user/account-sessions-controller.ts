@@ -50,7 +50,7 @@ export default {
             return mapControllerError(context, notFound('Session', 'Session not found'))
         }
         const result = await sessionListService.revoke({
-            userId: String(userId),
+            userId,
             current,
             publicId,
             sessionStored: () => context.session.isStored(),

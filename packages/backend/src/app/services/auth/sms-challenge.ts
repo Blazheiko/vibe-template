@@ -187,13 +187,13 @@ export async function openSessionChallenge(options: {
 export function splitSessionChallenges(
     pending: readonly SmsAuthChallengeRow[],
     sessionId: string | null,
-    now: UnixMs,
+    nowMs: UnixMs,
 ): { own: SmsAuthChallengeRow[]; others: SmsAuthChallengeRow[]; expired: SmsAuthChallengeRow[] } {
     const own: SmsAuthChallengeRow[] = []
     const others: SmsAuthChallengeRow[] = []
     const expired: SmsAuthChallengeRow[] = []
     for (const challenge of pending) {
-        if (challenge.expiresAt.getTime() <= now) expired.push(challenge)
+        if (challenge.expiresAt.getTime() <= nowMs) expired.push(challenge)
         else if (sessionId !== null && extractChallengeSessionId(challenge.metadata) === sessionId)
             own.push(challenge)
         else others.push(challenge)

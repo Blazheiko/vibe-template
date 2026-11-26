@@ -19,9 +19,9 @@ export interface IOAuthAccountRepository {
      * re-checks it under the user's row lock, so a claim that removed it is seen.
      */
     findLinkForUser(
+        userId: UserId,
         provider: string,
         providerUserId: string,
-        userId: UserId,
         tx: DbExecutor,
     ): Promise<OAuthAccountRow | undefined>
     create(data: OAuthAccountInsert, executor?: DbExecutor): Promise<OAuthAccountRow>
@@ -54,7 +54,7 @@ export const oauthAccountRepository: IOAuthAccountRepository = {
         return executor.select().from(oauthAccounts).where(eq(oauthAccounts.userId, userId))
     },
 
-    async findLinkForUser(provider, providerUserId, userId, tx) {
+    async findLinkForUser(userId, provider, providerUserId, tx) {
         return tx
             .select()
             .from(oauthAccounts)

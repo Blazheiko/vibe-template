@@ -1,3 +1,4 @@
+import { unixMs } from 'shared/brand'
 import { Result } from 'better-result'
 import type { SessionToken } from '#app/domain/secrets.js'
 import type { OAuthAccountId } from '#app/domain/ids.js'
@@ -44,7 +45,7 @@ vi.mock('#vendor/utils/logger.js', () => ({ default: mocks.logger }))
 
 const { signInMethodsService } = await import('./sign-in-methods-service.js')
 
-const NOW = Date.parse('2026-11-13T12:00:00Z')
+const NOW = unixMs(Date.parse('2026-11-13T12:00:00Z'))
 const TOKEN = 'session-token'
 // feat-245 (row 8 of Р3): a password proven within 300 s, an OAuth sign-in within 600 s.
 const REAUTH_WINDOW_MS = 300_000

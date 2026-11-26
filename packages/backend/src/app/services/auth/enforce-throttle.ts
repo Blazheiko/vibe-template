@@ -3,6 +3,7 @@ import { throttlePolicies, type ThrottlePolicy } from '#config/throttle-policies
 import type { AppError, AppResult } from '#app/services/shared/errors.js'
 import { consumeAuthThrottle } from './auth-throttle-service.js'
 import type { UserId } from '#app/domain/ids.js'
+import type { NormalizedEmail } from '#app/domain/email.js'
 
 /**
  * Consumes one attempt of `policy` for `key`: `ok` while the counter allows it, `rejected` once
@@ -28,7 +29,7 @@ export async function enforceThrottle(
  * its pending links over and over.
  */
 export async function enforceEmailLinkThrottles(
-    email: string,
+    email: NormalizedEmail,
     userId: UserId,
     rejected: AppError,
 ): Promise<AppResult<void>> {

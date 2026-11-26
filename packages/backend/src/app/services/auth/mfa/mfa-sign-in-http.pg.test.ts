@@ -1,7 +1,12 @@
 import { createServer } from 'node:net'
-import { seconds } from 'shared/brand'
+import { seconds, nowUnixMs } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
-import type { MfaTicketId, NormalizedRecoveryCode, SessionToken } from '#app/domain/secrets.js'
+import type {
+    MfaTicketId,
+    NormalizedRecoveryCode,
+    RawRecoveryCode,
+    SessionToken,
+} from '#app/domain/secrets.js'
 
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -417,7 +422,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             )
             return recoveryCodes.issue(row.id, tx)
         })
-        const code = (offset = 0n) => hotp(secret, totpStepAt(Date.now()) + offset)
+        const code = (offset = 0n) => hotp(secret, totpStepAt(nowUnixMs()) + offset)
         return { row, email: row.email ?? ('' as NormalizedEmail), code, codes }
     }
 
@@ -707,7 +712,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         await db
             .delete(mfaRecoveryCodes)
             .where(and(eq(mfaRecoveryCodes.userId, user.row.id), isNull(mfaRecoveryCodes.usedAt)))
-        const lastCode = last ?? ''
+        const lastCode = last ?? ('' as RawRecoveryCode)
         await withTransaction(async (tx) => {
             const { recoveryCodeRepository } = await import('#app/repositories/index.js')
             const { normalizeRecoveryCode, hashRecoveryCode } = await import('./recovery-codes.js')
@@ -1005,7 +1010,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
     // the recovery session, new codes, the recovery finished, an ordinary sign-in with the new app.
     it('recovery: single TOTP lost, last code, replace, new codes, finish, sign in again', async () => {
         const user = await mfaUser('mfa-recovery-path')
-        const last = user.codes[9] ?? ''
+        const last = user.codes[9] ?? ('' as RawRecoveryCode)
         const { recoveryCodeRepository } = await import('#app/repositories/index.js')
         const { normalizeRecoveryCode, hashRecoveryCode } = await import('./recovery-codes.js')
         await withTransaction((tx) =>
@@ -1056,7 +1061,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         const confirmed = browser.keep(
             await browser.request('POST', '/account/mfa/totp/confirm', {
                 enrollmentId: setup.body['enrollmentId'],
-                code: hotp(newSecret, totpStepAt(Date.now())),
+                code: hotp(newSecret, totpStepAt(nowUnixMs())),
             }),
         )
         expect(confirmed.status).toBe(200)
@@ -1082,7 +1087,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         const signedIn = again.keep(
             await again.request('POST', '/auth/mfa/verify', {
                 method: 'totp',
-                code: hotp(newSecret, totpStepAt(Date.now()) + 1n),
+                code: hotp(newSecret, totpStepAt(nowUnixMs()) + 1n),
             }),
         )
         expect(signedIn.status).toBe(200)
@@ -1208,11 +1213,11 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         const { wsConnectionRegistry } = await import('#app/websocket/ws-connection-registry.js')
         const { registerSessionDeletionLock } =
             await import('#vendor/utils/session/session-deletion-lock.js')
-        const { underUserRowLock } = await import('#app/services/user/session-list-service.js')
+        const { sessionDeletionLock } = await import('#app/services/user/session-list-service.js')
         const { sessionExists } = await import('#vendor/utils/session/redis-session-storage.js')
 
         afterEach(() => {
-            registerSessionDeletionLock(underUserRowLock)
+            registerSessionDeletionLock(sessionDeletionLock)
         })
 
         /** POST /auth/mfa/verify, its answer kept as a browser keeps it. */
@@ -1393,7 +1398,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             // The claim ran before the deletion: the notice is out, once.
             expect(newSignIn).toHaveBeenCalledTimes(1)
 
-            registerSessionDeletionLock(underUserRowLock)
+            registerSessionDeletionLock(sessionDeletionLock)
             const done = await verify(browser, CONTINUE)
             await expectSignedIn(browser, done, later.row.id)
             expect(await sessionExists(earlierSession, earlierToken)).toBe(false)

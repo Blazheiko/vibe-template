@@ -174,7 +174,7 @@ export const pushSubscriptionService = {
             data: NonNullable<Awaited<ReturnType<typeof getPushSubscriptionStatistics>>>
         }>
     > {
-        const data = await getPushSubscriptionStatistics(subscriptionId, userId)
+        const data = await getPushSubscriptionStatistics(userId, subscriptionId)
         if (data === undefined) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
         }

@@ -84,7 +84,7 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
             await state.recordSuccess(held, job, {
                 slot: NOW,
                 durationMs: 12.4,
-                now: unixMs(NOW + 5),
+                nowMs: unixMs(NOW + 5),
             }),
         ).toEqual({
             status: 'written',
@@ -104,8 +104,12 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
         const job = freshJob()
         const held = await take(job)
 
-        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
-        await state.recordSuccess(held, job, { slot: NOW - HOUR, durationMs: 1, now: unixMs(NOW) })
+        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, nowMs: unixMs(NOW) })
+        await state.recordSuccess(held, job, {
+            slot: NOW - HOUR,
+            durationMs: 1,
+            nowMs: unixMs(NOW),
+        })
 
         expect((await state.read(job)).lastSuccessSlot).toBe(NOW)
         await held.release()
@@ -120,7 +124,7 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
             const write = await state.recordFailure(held, job, {
                 outcome: 'failed',
                 durationMs: 3,
-                now: unixMs(NOW),
+                nowMs: unixMs(NOW),
                 maxBackoffMs: HOUR,
             })
             expect(write.status).toBe('written')
@@ -135,7 +139,7 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
             lastRunAt: NOW,
         })
 
-        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
+        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, nowMs: unixMs(NOW) })
         const after = await state.read(job)
         expect(after.consecutiveFailures).toBe(0)
         expect(after.nextRetryAt).toBeUndefined()
@@ -145,12 +149,12 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
     it('keeps lastSuccessSlot on a failure and records a timeout as such', async () => {
         const job = freshJob()
         const held = await take(job)
-        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
+        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, nowMs: unixMs(NOW) })
 
         await state.recordFailure(held, job, {
             outcome: 'timeout',
             durationMs: 9,
-            now: unixMs(NOW + MINUTE),
+            nowMs: unixMs(NOW + MINUTE),
             maxBackoffMs: HOUR,
         })
 
@@ -169,14 +173,14 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
         const a = await take(job)
         await admin.del(jobLeaseKey(job))
         const b = await take(job)
-        await state.recordSuccess(b, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
+        await state.recordSuccess(b, job, { slot: NOW, durationMs: 1, nowMs: unixMs(NOW) })
         const before = await admin.hgetall(stateKey(job))
 
         expect(
             await state.recordFailure(a, job, {
                 outcome: 'failed',
                 durationMs: 1,
-                now: unixMs(NOW),
+                nowMs: unixMs(NOW),
                 maxBackoffMs: HOUR,
             }),
         ).toEqual({ status: 'not-owner' })
@@ -184,7 +188,7 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
             await state.recordSuccess(a, job, {
                 slot: NOW + HOUR,
                 durationMs: 1,
-                now: unixMs(NOW),
+                nowMs: unixMs(NOW),
             }),
         ).toEqual({ status: 'not-owner' })
 

@@ -681,7 +681,7 @@ export class RequestSession {
             return
         }
         const publicId = this.info.data.device?.publicId
-        await deleteUnderLock(this.info.data.userId, () =>
+        await deleteUnderLock(this.userId() ?? undefined, () =>
             destroySession(previousId, storageToken, publicId),
         )
     }
@@ -721,7 +721,7 @@ export class RequestSession {
         if (userToken !== undefined) {
             const { id } = this.info
             const publicId = this.info.data.device?.publicId
-            await deleteUnderLock(this.info.data.userId, () =>
+            await deleteUnderLock(this.userId() ?? undefined, () =>
                 destroySession(id, userToken, publicId),
             )
             logger.info(

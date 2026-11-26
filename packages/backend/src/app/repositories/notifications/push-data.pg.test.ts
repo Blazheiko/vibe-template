@@ -218,13 +218,13 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
             'returns the same result as the legacy implementation for %s',
             async (key) => {
                 const expected = await legacyStatistics(ids[key], ids.userA)
-                const actual = await getPushSubscriptionStatistics(ids[key], ids.userA)
+                const actual = await getPushSubscriptionStatistics(ids.userA, ids[key])
                 expect(actual).toEqual(expected)
             },
         )
 
         it('counts s1 as expected', async () => {
-            const actual = await getPushSubscriptionStatistics(ids.s1, ids.userA)
+            const actual = await getPushSubscriptionStatistics(ids.userA, ids.s1)
             expect(actual?.statistics).toMatchObject({
                 totalNotifications: 7,
                 sentNotifications: 3,
@@ -236,13 +236,13 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
         })
 
         it('stays undefined for a subscription of another user', async () => {
-            expect(await getPushSubscriptionStatistics(ids.sB, ids.userA)).toBeUndefined()
+            expect(await getPushSubscriptionStatistics(ids.userA, ids.sB)).toBeUndefined()
         })
 
         it('aggregates in SQL instead of loading every log row', async () => {
             const spy = vi.spyOn(pool, 'query')
             try {
-                await getPushSubscriptionStatistics(ids.s1, ids.userA)
+                await getPushSubscriptionStatistics(ids.userA, ids.s1)
                 const sqlTexts = spy.mock.calls.map((call) => {
                     const first: unknown = call[0]
                     if (typeof first === 'string') return first
@@ -370,7 +370,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
         })
 
         it('the statistics of the new owner count only their own sends', async () => {
-            const result = await getPushSubscriptionStatistics(moved.subscription, moved.userB)
+            const result = await getPushSubscriptionStatistics(moved.userB, moved.subscription)
             expect(result?.statistics).toMatchObject({
                 totalNotifications: 1,
                 sentNotifications: 1,
@@ -396,7 +396,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
                 'A: new sign-in',
                 'A: password changed',
             ])
-            const result = await getPushSubscriptionStatistics(moved.subscription, moved.userA)
+            const result = await getPushSubscriptionStatistics(moved.userA, moved.subscription)
             expect(result?.statistics).toMatchObject({
                 totalNotifications: 2,
                 sentNotifications: 1,

@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import type { UserId } from '#app/domain/ids.js'
 // feat-247 (docs/plan/passkeys-mfa-plan.md, Р10): MFA_REQUIRED_FOR_STAFF is on by default, so a
 // staff account of a test has a second factor. This gives an account a confirmed TOTP factor with
@@ -32,5 +33,5 @@ export async function enrollTestTotp(userId: UserId): Promise<TestTotp> {
             tx,
         ),
     )
-    return { code: (offset = 0n) => hotp(secret, totpStepAt(Date.now()) + offset) }
+    return { code: (offset = 0n) => hotp(secret, totpStepAt(nowUnixMs()) + offset) }
 }

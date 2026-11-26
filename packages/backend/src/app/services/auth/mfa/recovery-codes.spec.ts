@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { NormalizedRecoveryCode } from '#app/domain/secrets.js'
+import { rawRecoveryCodeOf, type NormalizedRecoveryCode } from '#app/domain/secrets.js'
 
 vi.mock('#config/auth.js', () => ({ authConfig: { otpHmacKey: 'h'.repeat(32) } }))
 
@@ -30,18 +30,20 @@ describe('recovery codes (feat-245 Р8)', () => {
 
     it('typing: case, spaces, hyphens and look-alikes do not matter', () => {
         const normalized = 'ab0cd1efgh2jkm3n'
-        expect(normalizeRecoveryCode('ab0c-d1ef-gh2j-km3n')).toBe(normalized)
-        expect(normalizeRecoveryCode(' AB0C D1EF-GH2J KM3N ')).toBe(normalized)
-        expect(normalizeRecoveryCode('abOc-dlef-gh2j-km3n')).toBe(normalized)
-        expect(normalizeRecoveryCode('abIc-d1ef-gh2j-km3n')).toBe('ab1cd1efgh2jkm3n')
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf('ab0c-d1ef-gh2j-km3n'))).toBe(normalized)
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf(' AB0C D1EF-GH2J KM3N '))).toBe(normalized)
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf('abOc-dlef-gh2j-km3n'))).toBe(normalized)
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf('abIc-d1ef-gh2j-km3n'))).toBe(
+            'ab1cd1efgh2jkm3n',
+        )
     })
 
     it('anything else is not a code', () => {
-        expect(normalizeRecoveryCode('')).toBeNull()
-        expect(normalizeRecoveryCode('abcd-efgh-jkmn')).toBeNull()
-        expect(normalizeRecoveryCode('abcd-efgh-jkmn-pqrs-t')).toBeNull()
-        expect(normalizeRecoveryCode('abcd-efgh-jkmn-pqr!')).toBeNull()
-        expect(normalizeRecoveryCode('abcd-efgh-jkmn-pqru')).toBeNull()
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf(''))).toBeNull()
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf('abcd-efgh-jkmn'))).toBeNull()
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf('abcd-efgh-jkmn-pqrs-t'))).toBeNull()
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf('abcd-efgh-jkmn-pqr!'))).toBeNull()
+        expect(normalizeRecoveryCode(rawRecoveryCodeOf('abcd-efgh-jkmn-pqru'))).toBeNull()
     })
 
     it('the stored hash is a keyed HMAC, not the code', () => {

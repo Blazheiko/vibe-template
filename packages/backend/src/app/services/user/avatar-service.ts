@@ -43,7 +43,7 @@ function verifiedImageType(file: UploadedFile): DetectedImageType | undefined {
 }
 
 function serializeUser(user: {
-    id: bigint
+    id: UserId
     name: string
     email: string | null
     avatar: string | null | undefined

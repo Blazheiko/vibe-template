@@ -1,3 +1,4 @@
+import type { UnixMs } from 'shared/brand'
 import { Result } from 'better-result'
 import { type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import { MFA_REASONS, type SessionAuthState } from 'shared/mfa'
@@ -57,7 +58,7 @@ export const mfaResetService = {
          * refused with 401 session_revoked. The CLI has no session.
          */
         sessionStored?: (() => Promise<boolean>) | undefined
-        now?: number
+        now?: UnixMs
     }): Promise<AppResult<MfaResetOutcome>> {
         const { targetUserId } = input
         const reason = input.reason.trim()
