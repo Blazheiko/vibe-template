@@ -2641,8 +2641,8 @@
             "owner": "Blazheiko",
             "branch": "feat/branded-secrets",
             "dependencies": ["feat-263"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #851 (merge 6d4f40d7), status #850 (in_progress), #852 (review). app/domain/secrets.ts: RawToken/TokenHash, SessionBindingHash, OtpCode/OtpHash, RawRecoveryCode/NormalizedRecoveryCode/RecoveryCodeHash, MfaBindValue/MfaBinding, SessionToken, MfaTicketId/MfaReservationId/MfaCompletionId/MfaAttemptId; keyed hashes take the key as an argument (services pass the configured key); $type on the token_hash, session_binding_hash and code_hash columns and on users.session_token (default newSessionToken, relative runtime import); session tokens branded at the HTTP and WS boundary; type tests in app/domain/secrets.spec.ts. Local: make check exit 0 (backend 3897, frontend 1029), db:generate no changes. CI on a50dae0: test-pg https://github.com/Blazheiko/vibe-template/actions/runs/45799135115 (72 files, 724 passed, 0 skipped), test-redis https://github.com/Blazheiko/vibe-template/actions/runs/45799135104 (20 files, 211 passed, 0 skipped); all checks green again on 5956d6f. Deviations: SessionId not branded (vendor-owned text; userToken is a SessionToken, so the pair cannot be swapped), checkSessionToken keeps string parameters as the vendor hook, mfaBindingOf(key, value) instead of asMfaBinding. Manual golden path not run against a live app (no local database of this project)."
         },
         {
             "id": "feat-266",
