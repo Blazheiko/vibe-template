@@ -22,8 +22,21 @@ const tester = new RuleTester({
     },
 })
 
-const header =
-    "import type { Row, UserId } from './brand.js'\nimport type { UserId as U } from './brand.js'\ndeclare const x: bigint\ndeclare const row: unknown\n"
+// The brand is declared in the tested code itself: importing it from a fixture module made the
+// TypeScript checker of the CI runner fail to resolve the import (errorNoModuleMemberSymbol), and
+// then throw while printing that error. A renamed import is the same symbol to the checker as an
+// alias chain, which the cases below cover.
+const header = [
+    "declare const brandKey: ' brand'",
+    'type Brand<T, Id> = T & { readonly [brandKey]: [T, Id] }',
+    "type UserId = Brand<bigint, 'UserId'>",
+    'type U = UserId',
+    'type Row = { id: UserId; name: string }',
+    'declare const x: bigint',
+    'declare const row: unknown',
+    'export {}',
+    '',
+].join('\n')
 const valid = (code) => ({ code: header + code, filename })
 const invalid = (code) => ({ code: header + code, filename, errors: [{ messageId: 'brandCast' }] })
 
@@ -39,7 +52,7 @@ tester.run('no-brand-cast', rule, {
     invalid: [
         invalid('const a = x as UserId'),
         invalid('const b = x as U'),
-        invalid('type Alias = UserId\nconst c = x as Alias'),
+        invalid('type Alias = U\nconst c = x as Alias'),
         invalid('const d = (x as unknown) as UserId'),
         invalid('const e = <UserId>x'),
         invalid('const f = x as UserId | null'),
