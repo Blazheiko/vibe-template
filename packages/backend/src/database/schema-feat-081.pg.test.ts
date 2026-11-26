@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import { uid } from '../test-support/ids.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../test-support/pg-test-db.js'
@@ -24,7 +25,7 @@ describe.skipIf(!hasPg)('schema: llm_text_usage and support_chat_history', async
             .insert(users)
             .values({ name: 'gone', email: `gone-${String(Date.now())}@example.test` })
             .returning({ id: users.id })
-        const userId = user?.id ?? 0n
+        const userId = user?.id ?? uid(0)
         await db.insert(llmTextUsage).values({
             userId,
             model,
@@ -47,7 +48,7 @@ describe.skipIf(!hasPg)('schema: llm_text_usage and support_chat_history', async
             .insert(users)
             .values({ name: 'gone2', email: `gone2-${String(Date.now())}@example.test` })
             .returning({ id: users.id })
-        const userId = user?.id ?? 0n
+        const userId = user?.id ?? uid(0)
         await db.insert(supportChatHistory).values({ userId, role: 'user', content: 'hello' })
 
         await db.delete(users).where(eq(users.id, userId))

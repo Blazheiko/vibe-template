@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { TX, lockById, withTransaction } = vi.hoisted(() => {
@@ -27,7 +28,7 @@ describe('withCurrentSession', () => {
         lockById.mockResolvedValue(user)
         const work = vi.fn().mockResolvedValue(Result.ok('done'))
 
-        const result = await withCurrentSession(7n, 'current', work)
+        const result = await withCurrentSession(uid(7), 'current', work)
 
         expect(result).toEqual(Result.ok('done'))
         expect(lockById).toHaveBeenCalledWith(7n, TX)
@@ -41,7 +42,7 @@ describe('withCurrentSession', () => {
         lockById.mockResolvedValue(user)
         const work = vi.fn()
 
-        const result = await withCurrentSession(7n, 'current', work)
+        const result = await withCurrentSession(uid(7), 'current', work)
 
         expect(Result.isError(result) && result.error).toMatchObject({
             reason: 'session_revoked',
@@ -52,7 +53,7 @@ describe('withCurrentSession', () => {
     it('answers session_revoked without a transaction when no token was presented', async () => {
         const work = vi.fn()
 
-        const result = await withCurrentSession(7n, undefined, work)
+        const result = await withCurrentSession(uid(7), undefined, work)
 
         expect(Result.isError(result) && result.error).toMatchObject({
             reason: 'session_revoked',

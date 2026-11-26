@@ -1,7 +1,9 @@
 import { desc, eq } from 'drizzle-orm'
+import { uid } from '../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -21,9 +23,9 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
     const DAY = 24 * 60 * 60 * 1000
     const now = Date.now()
-    const ids = { userA: 0n, userB: 0n, userEmpty: 0n, s1: 0n, s2: 0n, s3: 0n, sB: 0n }
+    const ids = { userA: uid(0), userB: uid(0), userEmpty: uid(0), s1: 0n, s2: 0n, s3: 0n, sB: 0n }
 
-    const legacyFindByUserIdWithLogs = async (userId: bigint) => {
+    const legacyFindByUserIdWithLogs = async (userId: UserId) => {
         const subscriptionsData = await db
             .select()
             .from(pushSubscriptions)
@@ -47,7 +49,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
         )
     }
 
-    const legacyStatistics = async (subscriptionId: bigint, userId: bigint) => {
+    const legacyStatistics = async (subscriptionId: bigint, userId: UserId) => {
         const subscription = await pushSubscriptionRepository.findByIdAndUserId(
             subscriptionId,
             userId,
@@ -93,7 +95,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
         }
     }
 
-    const insertUser = async (name: string): Promise<bigint> => {
+    const insertUser = async (name: string): Promise<UserId> => {
         const [row] = await db
             .insert(users)
             .values({ name, email: `${name}-${String(now)}@example.test` })
@@ -102,7 +104,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
         return row.id
     }
 
-    const insertSubscription = async (userId: bigint, tag: string, ageDays: number) => {
+    const insertSubscription = async (userId: UserId, tag: string, ageDays: number) => {
         const [row] = await db
             .insert(pushSubscriptions)
             .values({
@@ -120,7 +122,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
     type Status = 'SENT' | 'FAILED' | 'PENDING' | null
     const insertLogs = async (
-        userId: bigint,
+        userId: UserId,
         subscriptionId: bigint,
         logs: { status: Status; ageDays: number }[],
     ) => {
@@ -307,9 +309,9 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
     // another account (same browser, account switch), so every read of its log has to
     // be scoped by the log's owner too.
     describe('log of a subscription that moved to another account', () => {
-        const moved = { userA: 0n, userB: 0n, subscription: 0n, endpoint: '' }
+        const moved = { userA: uid(0), userB: uid(0), subscription: 0n, endpoint: '' }
 
-        const insertLog = async (userId: bigint, title: string, status: 'SENT' | 'FAILED') => {
+        const insertLog = async (userId: UserId, title: string, status: 'SENT' | 'FAILED') => {
             await db.insert(pushNotificationLogs).values({
                 userId,
                 subscriptionId: moved.subscription,
@@ -320,7 +322,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
             })
         }
 
-        const moveTo = async (userId: bigint) => {
+        const moveTo = async (userId: UserId) => {
             const row = await pushSubscriptionRepository.updateByEndpoint(
                 moved.endpoint,
                 userId,

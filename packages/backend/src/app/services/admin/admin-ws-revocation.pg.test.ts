@@ -14,6 +14,7 @@ import {
     sleep,
 } from '../../../test-support/redis-test-client.js'
 import { WsTestClient, type Frame } from '../../../test-support/ws-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-062 over real WebSocket connections: a real uWebSockets.js server with the real
 // route tables, real sessions in Redis and real users in PostgreSQL. The role is
@@ -115,7 +116,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
 
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     const clients: WebSocket[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
     let counter = 0
@@ -137,12 +138,12 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         return row
     }
 
-    const setRole = async (id: bigint, role: Role): Promise<void> => {
+    const setRole = async (id: UserId, role: Role): Promise<void> => {
         await db.update(users).set({ role }).where(eq(users.id, id))
     }
 
     // A signed-in session and its WebSocket token (what the login response carries).
-    const wsTokenFor = async (user: { id: bigint; sessionToken: string }): Promise<string> => {
+    const wsTokenFor = async (user: { id: UserId; sessionToken: string }): Promise<string> => {
         const responseData = createResponseData()
         const context = createContext(
             { method: 'get', headers: new Map(), cookies: new Map() } as never,

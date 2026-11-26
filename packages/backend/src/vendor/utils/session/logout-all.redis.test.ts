@@ -337,3 +337,32 @@ describe.skipIf(!hasRedis)('POST /api/auth/logout-all when the cleanup stops', (
         expect(await admin.keys(`${PREFIX}logout_all:*`)).toEqual([])
     })
 })
+
+// feat-263 (ADR 0007 Р13): the stored session keeps the user id as text, and the app brands it as a
+// UserId only after the check. A record whose user id is not a row id is a session without a user,
+// not a request that reaches the code with a bad id.
+describe.skipIf(!hasRedis)('the user id of a stored session', () => {
+    const saveWithUser = (id: string, userId: string) =>
+        storage.saveSession({
+            id,
+            data: { userId, userToken: USER_TOKEN, csrfToken: CSRF },
+            createdAt: new Date().toISOString(),
+        })
+
+    it('signs in a session that holds a row id', async () => {
+        fakeUsers.tokens.set('42', USER_TOKEN)
+        await saveWithUser('valid', '42')
+
+        expect(await authenticates('valid')).toBe(true)
+    })
+
+    it.each(['abc', '0', '007', '9223372036854775808', ' 42'])(
+        'answers a session holding %j as signed out',
+        async (userId) => {
+            fakeUsers.tokens.set(userId, USER_TOKEN)
+            await saveWithUser('broken', userId)
+
+            expect(await authenticates('broken')).toBe(false)
+        },
+    )
+})

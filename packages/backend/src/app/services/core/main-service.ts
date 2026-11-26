@@ -1,4 +1,5 @@
 import type { ResponseData, SessionInfo } from '#vendor/types/types.js'
+import { toEntityId, asUserId } from '#app/domain/ids.js'
 import { userRepository } from '#app/repositories/index.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
@@ -80,7 +81,7 @@ export const mainService = {
             return Result.err(unauthorized('Session expired'))
         }
 
-        const user = await userRepository.findById(BigInt(userId))
+        const user = await userRepository.findById(asUserId(userId))
         if (user === undefined) {
             return Result.err(unauthorized('Session expired'))
         }
@@ -89,7 +90,7 @@ export const mainService = {
         const [wsToken, profile] = await Promise.all([
             recovery !== undefined
                 ? Promise.resolve(null)
-                : generateWsToken(sessionInfo, String(user.id)),
+                : generateWsToken(sessionInfo, toEntityId(user.id)),
             accountService.getProfile(user.id),
         ])
         // The user may have been deleted between the two reads: the session is gone then.
@@ -101,7 +102,7 @@ export const mainService = {
         return Result.ok({
             ...(csrfToken !== undefined ? { csrfToken } : {}),
             user: {
-                id: String(user.id),
+                id: toEntityId(user.id),
                 // From the profile read: the name and the revision of one committed state.
                 name: profile.value.name,
                 email: user.email ?? '',

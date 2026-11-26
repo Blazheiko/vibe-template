@@ -1,4 +1,6 @@
 import type { Redis } from 'ioredis'
+import { uid } from '../../../test-support/ids.js'
+import type { UserId } from '#app/domain/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { SupportLease } from './support-inflight-lock.js'
@@ -39,7 +41,7 @@ const { default: client, redisHealth } = (await import('#database/redis.js')) as
     redisHealth: { stop(): void }
 }
 const { acquireSupportLock } = await import('./support-inflight-lock.js')
-const lockKey = (user: bigint): string => `support:inflight:${String(user)}`
+const lockKey = (user: UserId): string => `support:inflight:${String(user)}`
 
 const admin = createTestRedis(PREFIX)
 const TTL = 60_000
@@ -55,9 +57,9 @@ const held = (ttlMs: number): SupportLease => ({
     maxLifetimeMs: 60_000,
 })
 let nextUser = 1000n
-const freshUser = (): bigint => {
+const freshUser = (): UserId => {
     nextUser += 1n
-    return nextUser
+    return uid(nextUser)
 }
 
 beforeAll(async () => {

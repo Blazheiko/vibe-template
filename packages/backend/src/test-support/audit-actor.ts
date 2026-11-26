@@ -3,6 +3,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { vi, type Mock } from 'vitest'
+import type { UserId } from '#app/domain/ids.js'
+import { uid } from './ids.js'
 
 import type { AuditProof } from 'shared/audit'
 
@@ -23,7 +25,7 @@ export interface TestAuditActor extends UserAuditActor {
  * A signed-in admin with a request id of its own, so a test finds exactly its events; its logger
  * is a spy, so a test can read the committed-event lines.
  */
-export const testAdminActor = (userId = 1n): TestAuditActor => ({
+export const testAdminActor = (userId: UserId = uid(1)): TestAuditActor => ({
     kind: 'user',
     userId,
     role: 'admin',
@@ -38,7 +40,7 @@ export const auditLogLines = (logger: { info: LogSpy }): unknown[] =>
     logger.info.mock.calls.filter((call) => call[1] === 'audit event').map((call) => call[0])
 
 /** A signed-in user of a request, for a service test that does not look at its events. */
-export const testUserActor = (userId = 1n): TestAuditActor => ({
+export const testUserActor = (userId: UserId = uid(1)): TestAuditActor => ({
     ...testAdminActor(userId),
     role: 'user',
 })

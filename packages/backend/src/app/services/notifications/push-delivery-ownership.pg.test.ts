@@ -1,4 +1,6 @@
 import { eq } from 'drizzle-orm'
+import { uid } from '../../../test-support/ids.js'
+import type { UserId } from '#app/domain/ids.js'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -35,10 +37,10 @@ describe.skipIf(!hasPg)('push delivery after a browser changes accounts', async 
 
     const stamp = String(Date.now())
     const endpoint = `https://fcm.googleapis.com/fcm/send/shared-browser-${stamp}`
-    const ids = { userA: 0n, userB: 0n, subscription: 0n }
+    const ids = { userA: uid(0), userB: uid(0), subscription: 0n }
     const payload = { title: 'New sign-in', body: 'B', data: { type: 'test' } }
 
-    const insertUser = async (name: string): Promise<bigint> => {
+    const insertUser = async (name: string): Promise<UserId> => {
         const [row] = await db
             .insert(users)
             .values({ name, email: `${name}-${stamp}@example.test` })

@@ -1,4 +1,6 @@
 import { Redis } from 'ioredis'
+import type { UserId } from '#app/domain/ids.js'
+import { uid } from '../../../test-support/ids.js'
 import { Result } from 'better-result'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,7 +31,7 @@ const userRepositoryMock = {
 }
 const applyPatch = vi.fn(() =>
     Promise.resolve({
-        userId: 7n,
+        userId: uid(7),
         locale: null,
         timeZone: null,
         theme: 'dark',
@@ -54,6 +56,10 @@ const { throttlePolicies } = await import('#config/throttle-policies.js')
 
 const stored = () => Promise.resolve(true)
 let nextUser = 1000n
+const freshUser = (): UserId => {
+    nextUser += 1n
+    return uid(nextUser)
+}
 
 beforeAll(async () => {
     if (hasRedis) await client.connect()
@@ -79,7 +85,7 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
     })
 
     it('30 changes pass, the 31st is a rate limit with no write', async () => {
-        const userId = (nextUser += 1n)
+        const userId = freshUser()
         for (let i = 0; i < 30; i += 1) {
             const result = await accountService.updateProfile(
                 userId,
@@ -105,7 +111,7 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
     })
 
     it('two sessions of one user share the budget; another user has their own', async () => {
-        const userId = (nextUser += 1n)
+        const userId = freshUser()
         for (let i = 0; i < 30; i += 1) {
             const token = i % 2 === 0 ? 'session-a' : 'session-b'
             await accountService.updateProfile(userId, { fontSize: 18 }, token, stored)
@@ -118,7 +124,7 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
             stored,
         )
         const other = await accountService.updateProfile(
-            (nextUser += 1n),
+            freshUser(),
             { fontSize: 18 },
             'session-c',
             stored,
@@ -138,7 +144,7 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
         redis.client = dead
         try {
             await expect(
-                accountService.updateProfile((nextUser += 1n), { theme: 'dark' }, 'token', stored),
+                accountService.updateProfile(freshUser(), { theme: 'dark' }, 'token', stored),
             ).rejects.toThrow()
             expect(withTransaction).not.toHaveBeenCalled()
         } finally {

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-232: the account service with the repositories, the transaction and the throttle mocked.
@@ -37,7 +38,7 @@ const TOKEN = 'presented-token'
 const stored = () => Promise.resolve(true)
 
 const row = (fields: Record<string, unknown> = {}) => ({
-    userId: 7n,
+    userId: uid(7),
     locale: null,
     timeZone: null,
     theme: null,
@@ -75,7 +76,7 @@ describe('accountService.getProfile', () => {
             preferences: null,
         })
 
-        const result = await accountService.getProfile(7n)
+        const result = await accountService.getProfile(uid(7))
 
         expect(result).toEqual(
             Result.ok({
@@ -99,7 +100,7 @@ describe('accountService.getProfile', () => {
             preferences: row({ revision: 3n }),
         })
 
-        await accountService.getProfile(7n)
+        await accountService.getProfile(uid(7))
 
         expect(userPreferencesRepositoryMock.findProfileByUserId).toHaveBeenCalledExactlyOnceWith(
             7n,
@@ -114,7 +115,7 @@ describe('accountService.getProfile', () => {
             preferences: row({ timeZone: 'Mars/Base', theme: 'dark', revision: 42n }),
         })
 
-        const result = await accountService.getProfile(7n)
+        const result = await accountService.getProfile(uid(7))
 
         if (!Result.isOk(result)) throw new Error('expected ok')
         expect(result.value.preferences.timeZone).toBeNull()
@@ -125,7 +126,7 @@ describe('accountService.getProfile', () => {
     it('a missing user is not found', async () => {
         userPreferencesRepositoryMock.findProfileByUserId.mockResolvedValue(undefined)
 
-        const result = await accountService.getProfile(7n)
+        const result = await accountService.getProfile(uid(7))
 
         expect(Result.isError(result)).toBe(true)
     })
@@ -134,7 +135,7 @@ describe('accountService.getProfile', () => {
 describe('accountService.updateProfile', () => {
     it('writes only the passed fields; null is passed on as a reset', async () => {
         const result = await accountService.updateProfile(
-            7n,
+            uid(7),
             { theme: null, fontSize: 18 },
             TOKEN,
             stored,
@@ -156,7 +157,7 @@ describe('accountService.updateProfile', () => {
     })
 
     it('after the commit, the new profile goes to every connection of the user (Р9 B)', async () => {
-        const result = await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
+        const result = await accountService.updateProfile(uid(7), { theme: 'dark' }, TOKEN, stored)
 
         if (!Result.isOk(result)) throw new Error('expected ok')
         expect(publishToUserMock).toHaveBeenCalledExactlyOnceWith(
@@ -169,7 +170,7 @@ describe('accountService.updateProfile', () => {
     it('a failed event does not fail the change', async () => {
         publishToUserMock.mockRejectedValueOnce(new Error('bus down'))
 
-        const result = await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
+        const result = await accountService.updateProfile(uid(7), { theme: 'dark' }, TOKEN, stored)
 
         expect(Result.isOk(result)).toBe(true)
     })
@@ -177,14 +178,14 @@ describe('accountService.updateProfile', () => {
     it('a refused change sends no event', async () => {
         userRepositoryMock.shareIfSessionToken.mockResolvedValue(undefined)
         userRepositoryMock.findById.mockResolvedValue({ id: 7n, name: 'Ann' })
-        await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
-        await accountService.updateProfile(7n, { timeZone: 'Mars/Base' }, TOKEN, stored)
+        await accountService.updateProfile(uid(7), { theme: 'dark' }, TOKEN, stored)
+        await accountService.updateProfile(uid(7), { timeZone: 'Mars/Base' }, TOKEN, stored)
 
         expect(publishToUserMock).not.toHaveBeenCalled()
     })
 
     it('a change of the name only still upserts the preferences with an empty patch', async () => {
-        const result = await accountService.updateProfile(7n, { name: 'Bob' }, TOKEN, stored)
+        const result = await accountService.updateProfile(uid(7), { name: 'Bob' }, TOKEN, stored)
 
         expect(userRepositoryMock.updateNameIfSessionToken).toHaveBeenCalledWith(
             7n,
@@ -198,7 +199,7 @@ describe('accountService.updateProfile', () => {
     })
 
     it('the name and the preferences get the same transaction', async () => {
-        await accountService.updateProfile(7n, { name: 'Bob', locale: 'uk' }, TOKEN, stored)
+        await accountService.updateProfile(uid(7), { name: 'Bob', locale: 'uk' }, TOKEN, stored)
 
         expect(withTransactionMock).toHaveBeenCalledOnce()
         expect(userRepositoryMock.updateNameIfSessionToken.mock.calls[0]![3]).toBe(TX)
@@ -207,7 +208,7 @@ describe('accountService.updateProfile', () => {
 
     it('an unknown time zone is a bad request with no throttle spent and no write', async () => {
         const result = await accountService.updateProfile(
-            7n,
+            uid(7),
             { timeZone: 'Mars/Base' },
             TOKEN,
             stored,
@@ -220,7 +221,7 @@ describe('accountService.updateProfile', () => {
 
     it('UTC and a reset of the zone are accepted', async () => {
         for (const timeZone of ['UTC', null, 'Europe/Kyiv']) {
-            const result = await accountService.updateProfile(7n, { timeZone }, TOKEN, stored)
+            const result = await accountService.updateProfile(uid(7), { timeZone }, TOKEN, stored)
             expect(Result.isOk(result), String(timeZone)).toBe(true)
         }
     })
@@ -228,14 +229,14 @@ describe('accountService.updateProfile', () => {
     it('a spent budget is a rate limit with no write', async () => {
         enforceThrottleMock.mockResolvedValue(Result.err({ _tag: 'RateLimited', message: 'x' }))
 
-        const result = await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
+        const result = await accountService.updateProfile(uid(7), { theme: 'dark' }, TOKEN, stored)
 
         expect(errorOf(result)).toMatchObject({ _tag: 'RateLimited' })
         expect(withTransactionMock).not.toHaveBeenCalled()
     })
 
     it('a session record deleted by a logout in another tab: 401 with no write', async () => {
-        const result = await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, () =>
+        const result = await accountService.updateProfile(uid(7), { theme: 'dark' }, TOKEN, () =>
             Promise.resolve(false),
         )
 
@@ -247,14 +248,19 @@ describe('accountService.updateProfile', () => {
         userRepositoryMock.shareIfSessionToken.mockResolvedValue(undefined)
         userRepositoryMock.findById.mockResolvedValue({ id: 7n, name: 'Ann' })
 
-        const result = await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
+        const result = await accountService.updateProfile(uid(7), { theme: 'dark' }, TOKEN, stored)
 
         expect(errorOf(result)).toMatchObject({ _tag: 'Unauthorized' })
         expect(userPreferencesRepositoryMock.applyPatch).not.toHaveBeenCalled()
     })
 
     it('no presented token: 401 with no write', async () => {
-        const result = await accountService.updateProfile(7n, { theme: 'dark' }, undefined, stored)
+        const result = await accountService.updateProfile(
+            uid(7),
+            { theme: 'dark' },
+            undefined,
+            stored,
+        )
 
         expect(errorOf(result)).toMatchObject({ _tag: 'Unauthorized' })
         expect(withTransactionMock).not.toHaveBeenCalled()

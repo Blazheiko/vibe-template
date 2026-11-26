@@ -20,6 +20,7 @@ import {
     sessionRevoked,
     type AppResult,
 } from '#app/services/shared/errors.js'
+import type { UserId } from '#app/domain/ids.js'
 
 /**
  * Whether the session record of the request is still stored: a logout in another tab deletes it
@@ -45,7 +46,7 @@ export const accountService = {
      * a PATCH that commits meanwhile cannot pair an old name with a new revision (a snapshot
      * like that would win over the right event of the same revision on the client).
      */
-    async getProfile(userId: bigint): Promise<AppResult<Profile>> {
+    async getProfile(userId: UserId): Promise<AppResult<Profile>> {
         const row = await userPreferencesRepository.findProfileByUserId(userId)
         if (row === undefined) {
             return Result.err(notFound('User', 'User not found'))
@@ -60,7 +61,7 @@ export const accountService = {
      * rotates users.session_token, a logout in another tab deletes the session record.
      */
     async updateProfile(
-        userId: bigint,
+        userId: UserId,
         body: UpdateProfileInput,
         presentedSessionToken: string | undefined,
         sessionStored: SessionStillStored,

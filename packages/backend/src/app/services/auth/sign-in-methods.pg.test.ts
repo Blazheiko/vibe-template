@@ -1,10 +1,12 @@
 import { Result } from 'better-result'
+import type { OAuthAccountId } from '#app/domain/ids.js'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-199 (security review 2026-11-12, M-2) against a real PostgreSQL: a link is removed only
 // for its own account, and two removals at once never take the last way in. The notices are not
@@ -31,7 +33,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
     const { signInMethodsService } = await import('#app/services/auth/sign-in-methods-service.js')
 
     const PASSWORD = 'pg-test-password-1'
-    const created: bigint[] = []
+    const created: UserId[] = []
     afterAll(async () => {
         for (const id of created) await db.delete(users).where(eq(users.id, id))
         await pool.end()
@@ -51,7 +53,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
         return user
     }
 
-    const linkTo = (userId: bigint, provider: string) =>
+    const linkTo = (userId: UserId, provider: string) =>
         oauthAccountRepository.create({
             userId,
             provider,
@@ -72,7 +74,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
 
     const request = (
         user: { sessionToken: string },
-        linkId: bigint,
+        linkId: OAuthAccountId,
         over: Record<string, unknown> = {},
     ) => ({
         linkId,
@@ -84,7 +86,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
         ...over,
     })
 
-    const providersOf = async (userId: bigint): Promise<string[]> =>
+    const providersOf = async (userId: UserId): Promise<string[]> =>
         (await oauthAccountRepository.findByUserId(userId)).map((link) => link.provider).sort()
 
     it('lists only the links of the account that asks', async () => {
@@ -125,7 +127,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
         // The repository refuses it on its own too.
         await db.transaction(async (tx) => {
             expect(
-                await oauthAccountRepository.deleteByIdForUser(victimsLink.id, attacker.id, tx),
+                await oauthAccountRepository.deleteForUser(attacker.id, victimsLink.id, tx),
             ).toBe(false)
         })
         expect(await providersOf(victim.id)).toEqual(['google'])

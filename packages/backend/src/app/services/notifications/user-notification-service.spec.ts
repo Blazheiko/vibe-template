@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 // Business-event notices (code-issues item 72, feat-236): each security event becomes a kind of
 // the notification catalog with its params, and a support reply is `support.reply`. The delivery
@@ -21,15 +22,15 @@ describe('userNotificationService', () => {
         ['logout_all', 'security.logout_all'],
         ['account_claimed', 'security.account_claimed'],
     ] as const)('security %s → %s with no params', (event, kind) => {
-        userNotificationService.security(7n, event)
+        userNotificationService.security(uid(7), event)
         expect(notify).toHaveBeenCalledWith(7n, kind, {})
     })
 
     it('passes the params of the kind', () => {
-        userNotificationService.security(7n, 'new_sign_in', { device: 'Chrome on macOS' })
-        userNotificationService.security(7n, 'sign_in_method_added', { provider: 'github' })
-        userNotificationService.security(7n, 'sign_in_method_removed', { provider: 'gitlab' })
-        userNotificationService.security(7n, 'session_revoked')
+        userNotificationService.security(uid(7), 'new_sign_in', { device: 'Chrome on macOS' })
+        userNotificationService.security(uid(7), 'sign_in_method_added', { provider: 'github' })
+        userNotificationService.security(uid(7), 'sign_in_method_removed', { provider: 'gitlab' })
+        userNotificationService.security(uid(7), 'session_revoked')
 
         expect(notify.mock.calls).toEqual([
             [7n, 'security.new_sign_in', { device: 'Chrome on macOS' }],
@@ -40,7 +41,7 @@ describe('userNotificationService', () => {
     })
 
     it('support reply is support.reply', () => {
-        userNotificationService.supportReply(7n)
+        userNotificationService.supportReply(uid(7))
         expect(notify).toHaveBeenCalledWith(7n, 'support.reply', {})
     })
 })

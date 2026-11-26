@@ -55,6 +55,7 @@ import {
     matchTotpStep,
     otpauthUri,
 } from './totp.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р8): the TOTP factor of the signed-in user.
 
@@ -87,7 +88,7 @@ const isEnrollment = (value: unknown): value is TotpEnrollment =>
     typeof (value as TotpEnrollment).expiresAt === 'string'
 
 export interface TotpRequest {
-    userId: bigint
+    userId: UserId
     session: Session
     presentedSessionToken: string | undefined
     actor: UserAuditActor
@@ -109,7 +110,7 @@ const authOf = (session: Session): SessionAuthState | undefined => session.sessi
 
 const tooManyCodes = (): AppError => rateLimited('Too many codes. Please try again later.')
 
-async function readAccount(userId: bigint): Promise<AppResult<MfaAccount>> {
+async function readAccount(userId: UserId): Promise<AppResult<MfaAccount>> {
     const user = await userRepository.findById(userId)
     if (user === undefined) return Result.err(notFound('User', 'User not found'))
     return Result.ok(await loadMfaAccount(user))
@@ -131,7 +132,7 @@ export function openTotpSecret(factor: TotpFactorRow): Buffer | null {
 }
 
 export const totpService = {
-    async status(userId: bigint, session: Session): Promise<AppResult<MfaStatus>> {
+    async status(userId: UserId, session: Session): Promise<AppResult<MfaStatus>> {
         const user = await userRepository.findById(userId)
         if (user === undefined) return Result.err(notFound('User', 'User not found'))
         const account = await loadMfaAccount(user)
@@ -365,7 +366,7 @@ export const totpService = {
      * only. Throttled per user before the check. Answers the version that matched.
      */
     async verify(
-        userId: bigint,
+        userId: UserId,
         code: string,
         options: { now?: number; executor?: DbExecutor; throttle?: boolean } = {},
     ): Promise<AppResult<{ factorId: bigint }>> {
@@ -386,8 +387,8 @@ export const totpService = {
         const step = matchTotpStep(secret, code, options.now ?? Date.now())
         if (step === null) return Result.err(badRequest('Invalid code', MFA_REASONS.invalidCode))
         const spent = await totpFactorRepository.consumeStep(
-            factor.id,
             userId,
+            factor.id,
             step,
             options.executor,
         )

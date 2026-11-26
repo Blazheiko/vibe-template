@@ -27,6 +27,7 @@ import { announceMfaChange } from './mfa-notice.js'
 import { recheckPrivilegedActor } from './privileged-actor.js'
 import { requireProof } from './require-proof.js'
 import { staffPolicy } from './staff-policy.js'
+import { toEntityId, type UserId } from '#app/domain/ids.js'
 
 // feat-247 (docs/plan/passkeys-mfa-plan.md, Р12, Р13): an administrator (users.mfa.reset, row 10
 // of Р3) or the CLI removes every second factor and recovery code of another account. The account
@@ -37,14 +38,14 @@ import { staffPolicy } from './staff-policy.js'
 // and the admin's session, permission and proof are checked again under the lock.
 
 export interface MfaResetOutcome {
-    userId: bigint
+    userId: UserId
     removed: { totp: boolean; passkeys: number; recoveryCodes: number }
 }
 
 export const mfaResetService = {
     async reset(input: {
         actor: UserAuditActor | SystemAuditActor
-        targetUserId: bigint
+        targetUserId: UserId
         reason: string
         /** The auth state of the admin's session (row 10); the CLI has none and is not asked. */
         sessionAuth?: SessionAuthState | undefined
@@ -163,7 +164,7 @@ export const mfaResetService = {
         auditService.logCommitted(input.actor.logger, events)
         // The token rotated: every socket of the account closes (other instances on their
         // periodic pass), and the session records go.
-        wsSessionRevocation.closeUserConnections(String(targetUserId))
+        wsSessionRevocation.closeUserConnections(toEntityId(targetUserId))
         try {
             await destroyAllSessions(result.value.previousSessionToken)
         } catch (err) {

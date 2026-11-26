@@ -17,6 +17,7 @@ import type { SessionDevice } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
 import { listSessions } from '#vendor/utils/session/redis-session-storage.js'
 import type { IndexPosition } from '#vendor/utils/session/session-page-cursor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-233 (Р11): a new sign-in is announced by a push that names the device and, under the
 // rules below, by a mail with the details and a link to the session list. The caller of
@@ -132,7 +133,7 @@ export type NewSignInMailOutcome =
     'sent' | 'no_address' | 'unverified' | 'familiar' | 'throttled' | 'failed'
 
 export const mailNewSignIn = async (
-    userId: bigint,
+    userId: UserId,
     device: SessionDevice,
 ): Promise<NewSignInMailOutcome> => {
     const user = await userRepository.findById(userId)
@@ -170,7 +171,7 @@ export const mailNewSignIn = async (
  * push service that fails or is slow must not change or delay its answer.
  */
 export function notifyNewSignIn(
-    userId: bigint,
+    userId: UserId,
     device: SessionDevice,
     options: { mail: boolean },
 ): void {

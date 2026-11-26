@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { UserId } from '#app/domain/ids.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { ROLES, STAFF_ROLES } from 'shared/access'
@@ -23,7 +24,7 @@ describe.skipIf(!hasPg)('schema: users.role and users_staff_role_verified_email'
     const { db, pool } = await import('#database/db.js')
     const { users } = await import('#database/schema.js')
     const stamp = String(Date.now())
-    const ids: bigint[] = []
+    const ids: UserId[] = []
     let counter = 0
 
     const insert = async (role: (typeof ROLES)[number], verified: boolean) => {

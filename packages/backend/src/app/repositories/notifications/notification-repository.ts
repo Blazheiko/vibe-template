@@ -4,11 +4,12 @@ import type { InferSelectModel } from 'drizzle-orm'
 import { db } from '#database/db.js'
 import { notifications } from '#database/schema.js'
 import { NOTIFICATIONS_UNREAD_COUNT_CAP } from 'shared/notifications'
+import type { UserId } from '#app/domain/ids.js'
 
 export type NotificationRow = InferSelectModel<typeof notifications>
 
 export interface NotificationInsert {
-    userId: bigint
+    userId: UserId
     category: string
     kind: string
     params: Record<string, unknown>
@@ -47,7 +48,7 @@ export const notificationRepository = {
 
     /** Newest first, `id < before`. Reads one row more than `limit` to know whether more follow. */
     async page(
-        userId: bigint,
+        userId: UserId,
         options: { unread: boolean; before: bigint | null; limit: number },
     ): Promise<NotificationPage> {
         const conditions: SQL[] = [eq(t.userId, userId)]
@@ -71,7 +72,7 @@ export const notificationRepository = {
      * The unread count, capped (Р6): the LIMIT is on the rows of the subquery, before COUNT, so at
      * most the cap of rows of the partial index is read.
      */
-    async countUnread(userId: bigint): Promise<number> {
+    async countUnread(userId: UserId): Promise<number> {
         const result = await db.execute<{ count: number }>(sql`
             SELECT COUNT(*)::int AS count FROM (
                 SELECT 1 FROM ${t}
@@ -86,7 +87,7 @@ export const notificationRepository = {
      * already keeps its `read_at` and answers the same link. Null: no such notification of this
      * user. Both statements are bound to the user.
      */
-    async markRead(userId: bigint, id: bigint): Promise<{ link: string | null } | null> {
+    async markRead(userId: UserId, id: bigint): Promise<{ link: string | null } | null> {
         await db
             .update(t)
             .set({ readAt: sql`now()` })
@@ -99,7 +100,7 @@ export const notificationRepository = {
     },
 
     /** Marks every unread notification of the user with `id <= upTo` read (Р6). */
-    async markAllUpTo(userId: bigint, upTo: bigint): Promise<number> {
+    async markAllUpTo(userId: UserId, upTo: bigint): Promise<number> {
         const rows = await db
             .update(t)
             .set({ readAt: sql`now()` })

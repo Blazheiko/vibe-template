@@ -11,6 +11,7 @@ import {
 import { appErrorMessage } from '../shared/errors.js'
 import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
+import type { OneTimeTokenRowId, SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -74,7 +75,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
     const { stepUpService } = await import('#app/services/auth/mfa/step-up.js')
 
     const run = `${String(Date.now())}-${String(process.pid)}`
-    const userIds: bigint[] = []
+    const userIds: UserId[] = []
     let counter = 0
     let passwordHash = ''
 
@@ -110,7 +111,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         return user
     }
 
-    const insertResetLink = async (userId: bigint) => {
+    const insertResetLink = async (userId: UserId) => {
         counter += 1
         const [row] = await db
             .insert(passwordResetTokens)
@@ -124,7 +125,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         return row
     }
 
-    const linkUsedAt = async (id: bigint) => {
+    const linkUsedAt = async (id: OneTimeTokenRowId) => {
         const [row] = await db
             .select({ usedAt: passwordResetTokens.usedAt })
             .from(passwordResetTokens)
@@ -132,7 +133,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         return row?.usedAt ?? null
     }
 
-    const userRow = async (id: bigint) => {
+    const userRow = async (id: UserId) => {
         const [row] = await db.select().from(users).where(eq(users.id, id))
         if (row === undefined) throw new Error('user gone')
         return row
@@ -160,7 +161,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
     }
 
     /** POST /auth/reauth with a password; the session's auth state after it. */
-    const reauth = async (user: { id: bigint; sessionToken: string }, password: string) => {
+    const reauth = async (user: { id: UserId; sessionToken: string }, password: string) => {
         const { state, session } = sessionOf()
         const result = await stepUpService.reauth(
             { userId: user.id, session, presentedSessionToken: user.sessionToken },
@@ -177,7 +178,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         verified: { pwd: new Date().toISOString() },
     })
 
-    const startLink = (user: { id: bigint; sessionToken: string }, sessionAuth: SessionAuthState) =>
+    const startLink = (user: { id: UserId; sessionToken: string }, sessionAuth: SessionAuthState) =>
         authService.startEmailLink(
             user.id,
             { email: `new-${run}-${String(counter)}@example.test` },
@@ -299,7 +300,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         expect(await linkUsedAt(link.id)).toBeNull()
     })
 
-    const logoutAll = (user: { id: bigint; sessionToken: string }) =>
+    const logoutAll = (user: { id: UserId; sessionToken: string }) =>
         authService.logoutAll(
             {
                 getUserId: () => String(user.id),
@@ -370,7 +371,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         return row
     }
 
-    const challengeInvalidatedAt = async (id: string) => {
+    const challengeInvalidatedAt = async (id: SmsChallengeId) => {
         const [row] = await db
             .select({ invalidatedAt: smsAuthChallenges.invalidatedAt })
             .from(smsAuthChallenges)

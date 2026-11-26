@@ -2,6 +2,7 @@ import { Result } from 'better-result'
 import { throttlePolicies, type ThrottlePolicy } from '#config/throttle-policies.js'
 import type { AppError, AppResult } from '#app/services/shared/errors.js'
 import { consumeAuthThrottle } from './auth-throttle-service.js'
+import type { UserId } from '#app/domain/ids.js'
 
 /**
  * Consumes one attempt of `policy` for `key`: `ok` while the counter allows it, `rejected` once
@@ -28,7 +29,7 @@ export async function enforceThrottle(
  */
 export async function enforceEmailLinkThrottles(
     email: string,
-    userId: bigint,
+    userId: UserId,
     rejected: AppError,
 ): Promise<AppResult<void>> {
     const budgets: [ThrottlePolicy, string][] = [

@@ -3,6 +3,7 @@ import { oauthAccounts } from '#database/schema.js'
 import { eq, and } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import type { OAuthAccountId, UserId } from '#app/domain/ids.js'
 
 export type OAuthAccountRow = InferSelectModel<typeof oauthAccounts>
 export type OAuthAccountInsert = InferInsertModel<typeof oauthAccounts>
@@ -12,7 +13,7 @@ export interface IOAuthAccountRepository {
         provider: string,
         providerUserId: string,
     ): Promise<OAuthAccountRow | undefined>
-    findByUserId(userId: bigint, executor?: DbExecutor): Promise<OAuthAccountRow[]>
+    findByUserId(userId: UserId, executor?: DbExecutor): Promise<OAuthAccountRow[]>
     /**
      * The link of this identity to this user, read inside `tx` (feat-097): a sign-in
      * re-checks it under the user's row lock, so a claim that removed it is seen.
@@ -20,18 +21,18 @@ export interface IOAuthAccountRepository {
     findLinkForUser(
         provider: string,
         providerUserId: string,
-        userId: bigint,
+        userId: UserId,
         tx: DbExecutor,
     ): Promise<OAuthAccountRow | undefined>
     create(data: OAuthAccountInsert, executor?: DbExecutor): Promise<OAuthAccountRow>
     /** Removes every OAuth link of the user (a claim, feat-097). */
     /** Removes every link of the user; answers the provider of each removed link (feat-235). */
-    deleteByUserId(userId: bigint, executor: DbExecutor): Promise<string[]>
+    deleteByUserId(userId: UserId, executor: DbExecutor): Promise<string[]>
     /**
      * Removes one link, only if it belongs to this user (feat-199). False when there is no
      * such link of this user: the id of another account's link removes nothing.
      */
-    deleteByIdForUser(id: bigint, userId: bigint, executor: DbExecutor): Promise<boolean>
+    deleteForUser(userId: UserId, id: OAuthAccountId, executor: DbExecutor): Promise<boolean>
 }
 
 export const oauthAccountRepository: IOAuthAccountRepository = {
@@ -92,7 +93,7 @@ export const oauthAccountRepository: IOAuthAccountRepository = {
         return rows.map((row) => row.provider)
     },
 
-    async deleteByIdForUser(id, userId, executor) {
+    async deleteForUser(userId, id, executor) {
         const rows = await executor
             .delete(oauthAccounts)
             .where(and(eq(oauthAccounts.id, id), eq(oauthAccounts.userId, userId)))

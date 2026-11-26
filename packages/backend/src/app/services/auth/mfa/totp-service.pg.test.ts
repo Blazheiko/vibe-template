@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hasPg } from '../../../../test-support/pg-test-db.js'
 import { testUserActor } from '../../../../test-support/audit-actor.js'
 import type { Session, SessionData, SessionInfo } from '#vendor/types/types.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, tasks M5) against a real PostgreSQL: the TOTP
 // confirmation is idempotent by its enrollment id, parallel confirmations leave one version and
@@ -43,7 +44,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
     const { base32Decode, hotp, totpStepAt } = await import('./totp.js')
     const { mergeSessionAuth, sessionAuthOf } = await import('shared/mfa')
 
-    const created: bigint[] = []
+    const created: UserId[] = []
     afterAll(async () => {
         for (const id of created) await db.delete(users).where(eq(users.id, id))
         await pool.end()
@@ -55,7 +56,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
     const NOW = Date.now()
     const iso = (offsetSeconds = 0): string => new Date(NOW + offsetSeconds * 1000).toISOString()
 
-    const newUser = async (): Promise<{ id: bigint; sessionToken: string }> => {
+    const newUser = async (): Promise<{ id: UserId; sessionToken: string }> => {
         const [user] = await db
             .insert(users)
             .values({
@@ -130,7 +131,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         verified: { pwd: iso(-10) },
     }
 
-    const request = (user: { id: bigint; sessionToken: string }, session: Session) => ({
+    const request = (user: { id: UserId; sessionToken: string }, session: Session) => ({
         userId: user.id,
         session,
         presentedSessionToken: user.sessionToken,
@@ -138,11 +139,11 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         now: NOW,
     })
 
-    const factorsOf = (userId: bigint) =>
+    const factorsOf = (userId: UserId) =>
         db.select().from(totpFactors).where(eq(totpFactors.userId, userId))
 
     const setupAndCode = async (
-        user: { id: bigint; sessionToken: string },
+        user: { id: UserId; sessionToken: string },
         session: Session,
         stepOffset = 0n,
     ) => {

@@ -13,6 +13,7 @@ import {
     sleep,
 } from '../../../test-support/redis-test-client.js'
 import { WsTestClient, type Frame } from '../../../test-support/ws-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-063 (D0, D1) over real WebSocket connections: the support chat refuses a message
 // BEFORE it answers `ok` (a too long one, one that is too frequent, one sent while the
@@ -132,7 +133,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
 
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     const clients: WebSocket[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
     let counter = 0
@@ -172,7 +173,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
     // Whether the chat adapter is configured (feat-185): yes, unless a test says otherwise.
     let chatConfigured: MockInstance<(stage: SupportChatStage) => boolean> | undefined
     const today = (): string => new Date().toISOString().slice(0, 10)
-    const spentBy = async (userId: bigint): Promise<number> =>
+    const spentBy = async (userId: UserId): Promise<number> =>
         Number((await admin.get(`llm:budget:${String(userId)}:${today()}`)) ?? 0)
 
     class Client extends WsTestClient {
@@ -424,7 +425,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
     // the server stored the message. The client then sends the same message with the same id;
     // that must not store it twice.
     describe('a resend with the same client message id', () => {
-        const userMessages = async (userId: bigint) =>
+        const userMessages = async (userId: UserId) =>
             (
                 await db
                     .select()

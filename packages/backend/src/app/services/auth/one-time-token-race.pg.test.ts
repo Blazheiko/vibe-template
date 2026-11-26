@@ -7,6 +7,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { testProofHolder, testRequest } from '../../../test-support/audit-actor.js'
+import type { OneTimeTokenRowId, UserId } from '#app/domain/ids.js'
 
 // feat-060: the reset, email-verification and email-link tokens are single-use. They
 // used to be read, checked, applied and only then marked used, with `UPDATE ... WHERE
@@ -62,7 +63,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     const now = Date.now()
     const OLD_PASSWORD = 'old-secret-123'
     const META = { ipAddress: '127.0.0.1' }
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let counter = 0
 
     // An email link adds an address to an account without one (feat-096 checks it under
@@ -87,7 +88,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
     const future = (): Date => new Date(Date.now() + 60_000)
 
-    const newResetToken = async (userId: bigint, expiresAt = future()) => {
+    const newResetToken = async (userId: UserId, expiresAt = future()) => {
         const raw = `reset-${crypto.randomUUID()}`
         // feat-097: a reset link is for the address it was mailed to.
         const [owner] = await db
@@ -102,7 +103,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         })
         return { raw, id: row.id }
     }
-    const newVerificationToken = async (userId: bigint) => {
+    const newVerificationToken = async (userId: UserId) => {
         const raw = `verify-${crypto.randomUUID()}`
         const row = await emailVerificationRepository.create({
             userId,
@@ -111,7 +112,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         })
         return { raw, id: row.id }
     }
-    const newLinkToken = async (userId: bigint, targetEmail: string) => {
+    const newLinkToken = async (userId: UserId, targetEmail: string) => {
         const raw = `link-${crypto.randomUUID()}`
         const row = await emailLinkVerificationRepository.create({
             userId,
@@ -122,14 +123,14 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         return { raw, id: row.id }
     }
 
-    const userRow = async (id: bigint) => {
+    const userRow = async (id: UserId) => {
         const [row] = await db.select().from(users).where(eq(users.id, id))
         return row
     }
     const usedAt = async (
         table:
             typeof passwordResetTokens | typeof emailVerifications | typeof emailLinkVerifications,
-        id: bigint,
+        id: OneTimeTokenRowId,
     ): Promise<Date | null | undefined> => {
         const [row] = await db.select({ usedAt: table.usedAt }).from(table).where(eq(table.id, id))
         return row?.usedAt
@@ -305,7 +306,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
     describe('email link token', () => {
         // feat-097: an email link works only from a current session of the account that asked.
-        const link = (token: string, user: { id: bigint; sessionToken: string }) =>
+        const link = (token: string, user: { id: UserId; sessionToken: string }) =>
             emailVerificationService.verifyEmail(
                 token,
                 META,
@@ -368,7 +369,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     // feat-096: the transaction contract itself, against real row locks.
     describe('runTokenTransaction and issueTokenLocked', () => {
         /** Holds the user's row lock in another transaction until `release` is called. */
-        const holdUserLock = async (userId: bigint) => {
+        const holdUserLock = async (userId: UserId) => {
             let release: () => void = () => undefined
             const released = new Promise<void>((resolve) => {
                 release = resolve
@@ -391,7 +392,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
                 | typeof passwordResetTokens
                 | typeof emailVerifications
                 | typeof emailLinkVerifications,
-            userId: bigint,
+            userId: UserId,
         ): Promise<number> => {
             const rows = await db
                 .select({ usedAt: table.usedAt })
@@ -403,7 +404,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         it("retires the other tables' pending tokens even when their id equals the consumed one", async () => {
             const user = await insertUser()
             // The same id in two tables: an exception by id would keep the reset token alive.
-            const sharedId = 900_000_000n + BigInt(counter)
+            const sharedId = (900_000_000n + BigInt(counter)) as OneTimeTokenRowId
             const [verification] = await db
                 .insert(emailVerifications)
                 .values({

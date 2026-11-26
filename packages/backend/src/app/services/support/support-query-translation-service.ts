@@ -6,6 +6,7 @@ import logger from '#logger'
 import supportConfig from '#config/support.js'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 import { aiAbortKind } from '#app/services/ai/ai-request-signal.js'
+import type { UserId } from '#app/domain/ids.js'
 
 const { defaultTranslationPrompt, defaultGeneration } = supportConfig
 
@@ -20,7 +21,7 @@ export const supportQueryTranslationService = {
     async translateToEnglish(
         text: string,
         options: {
-            userId?: bigint
+            userId?: UserId
             signal?: AbortSignal
             /** Receives the usage the provider reported (the daily budget settles with it). */
             onUsage?: (usage: TokenUsage) => void

@@ -17,6 +17,7 @@ import {
 } from '#app/repositories/index.js'
 import { badRequest, forbidden, type AppResult } from '#app/services/shared/errors.js'
 import { auditEventTransformer } from '#app/transformers/index.js'
+import { type UserId } from '#app/domain/ids.js'
 
 /** One page of the audit log (Р7). */
 export const AUDIT_EVENTS_PAGE_SIZE = 50
@@ -63,8 +64,8 @@ export function decodeAuditCursor(text: string): AuditEventCursor | null {
 export interface AuditEventsQuery {
     actions?: readonly AuditAction[]
     group?: AuditGroup
-    actorUserId?: bigint
-    targetUserId?: bigint
+    actorUserId?: UserId
+    targetUserId?: UserId
     targetType?: AuditTargetType
     targetId?: string
     requestId?: string
@@ -154,7 +155,7 @@ export const auditEventsQueryService = {
                 ? encodeAuditCursor({ occurredAt: last.occurredAt, id: last.id })
                 : null
 
-        const ids = new Set<bigint>()
+        const ids = new Set<UserId>()
         for (const row of page) {
             if (row.actorUserId !== null) ids.add(row.actorUserId)
             if (row.targetUserId !== null) ids.add(row.targetUserId)

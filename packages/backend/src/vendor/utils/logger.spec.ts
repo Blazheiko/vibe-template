@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../test-support/ids.js'
 
 const { captureExceptionMock, captureMessageMock } = vi.hoisted(() => ({
     captureExceptionMock: vi.fn(),
@@ -46,8 +47,8 @@ describe('logger sentry forwarding', () => {
 
         logger.info({ requestId: 'r-1' }, 'info message')
         logger.warn({ requestId: 'r-1' }, 'warn message')
-        logger.error({ requestId: 'r-1', userId: 7n, sentryCapture: true }, 'error message')
-        logger.fatal({ requestId: 'r-1', userId: 7n, sentryCapture: true }, 'fatal message')
+        logger.error({ requestId: 'r-1', userId: uid(7), sentryCapture: true }, 'error message')
+        logger.fatal({ requestId: 'r-1', userId: uid(7), sentryCapture: true }, 'fatal message')
 
         await new Promise((resolve) => setTimeout(resolve, 0))
 

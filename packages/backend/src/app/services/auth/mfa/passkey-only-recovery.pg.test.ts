@@ -11,6 +11,7 @@ import {
     hasRedis,
 } from '../../../../test-support/redis-test-client.js'
 import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р12, Р13; tasks P4 «Відновлення акаунта лише з
 // passkey», steps 1–3) over HTTP with real WebAuthn answers. An account with a verified email and
@@ -139,7 +140,7 @@ describe.skipIf(!hasPg || !hasRedis)(
         await import('#app/start/index.js')
 
         const admin = createTestRedis(PREFIX)
-        const createdUserIds: bigint[] = []
+        const createdUserIds: UserId[] = []
         let stopServer: ((type?: string) => Promise<void>) | undefined
         const RP = webauthnConfig.rpId
         const WEB_ORIGIN = webauthnConfig.origins[0] ?? ''
@@ -257,7 +258,7 @@ describe.skipIf(!hasPg || !hasRedis)(
             return { row, email: row.email ?? '', key, codes }
         }
 
-        const unusedCodes = async (userId: bigint) =>
+        const unusedCodes = async (userId: UserId) =>
             (
                 await db
                     .select()

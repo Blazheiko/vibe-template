@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-233 (Р9): "end all other sessions" ends them before this session is renewed, so a failed
@@ -56,7 +57,7 @@ describe('AccountSessionsController.revokeOtherSessions', () => {
         const response = await Controller.revokeOtherSessions(context)
         expect(revokeOthers).toHaveBeenCalledWith(
             expect.objectContaining({
-                userId: 7n,
+                userId: uid(7),
                 presentedSessionToken: 'presented-token',
                 requestingSessionId: 's1',
             }),

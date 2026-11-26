@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -17,13 +18,13 @@ describe.skipIf(!hasPg)('MFA storage on PostgreSQL', async () => {
         await import('#app/repositories/index.js')
     const { withTransaction } = await import('#app/repositories/transaction.js')
 
-    const created: bigint[] = []
+    const created: UserId[] = []
     afterAll(async () => {
         for (const id of created) await db.delete(users).where(eq(users.id, id))
         await pool.end()
     })
 
-    const newUser = async (): Promise<bigint> => {
+    const newUser = async (): Promise<UserId> => {
         const [user] = await db
             .insert(users)
             .values({ name: 'mfa-storage', email: `${crypto.randomUUID()}@example.test` })
@@ -33,7 +34,7 @@ describe.skipIf(!hasPg)('MFA storage on PostgreSQL', async () => {
         return user.id
     }
 
-    const factor = (userId: bigint, enrollmentId = crypto.randomUUID().slice(0, 32)) => ({
+    const factor = (userId: UserId, enrollmentId = crypto.randomUUID().slice(0, 32)) => ({
         userId,
         enrollmentId,
         secretCiphertext: Buffer.from([1, 2, 3, 4]),
@@ -74,27 +75,27 @@ describe.skipIf(!hasPg)('MFA storage on PostgreSQL', async () => {
         )
         const results = await Promise.all(
             Array.from({ length: 5 }, () =>
-                totpFactorRepository.consumeStep(created.id, userId, 101n),
+                totpFactorRepository.consumeStep(userId, created.id, 101n),
             ),
         )
         expect(results.filter(Boolean)).toHaveLength(1)
         // The same or an earlier step again: refused.
-        expect(await totpFactorRepository.consumeStep(created.id, userId, 101n)).toBe(false)
-        expect(await totpFactorRepository.consumeStep(created.id, userId, 100n)).toBe(false)
-        expect(await totpFactorRepository.consumeStep(created.id, userId, 102n)).toBe(true)
+        expect(await totpFactorRepository.consumeStep(userId, created.id, 101n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, created.id, 100n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, created.id, 102n)).toBe(true)
     })
 
     it('a step of a replaced version is refused (the check named another secret)', async () => {
         const userId = await newUser()
         const old = await withTransaction((tx) => totpFactorRepository.replace(factor(userId), tx))
         await withTransaction((tx) => totpFactorRepository.replace(factor(userId), tx))
-        expect(await totpFactorRepository.consumeStep(old.created.id, userId, 500n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, old.created.id, 500n)).toBe(false)
         // And the id of another user's version spends nothing.
         const other = await newUser()
         const foreign = await withTransaction((tx) =>
             totpFactorRepository.replace(factor(other), tx),
         )
-        expect(await totpFactorRepository.consumeStep(foreign.created.id, userId, 500n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, foreign.created.id, 500n)).toBe(false)
     })
 
     it('a recovery code is spent once under a race; a new batch voids the old one', async () => {

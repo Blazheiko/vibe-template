@@ -9,6 +9,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-063, D3 over HTTP: GET /support/chat/history is read a page at a time. A real server
 // with the real route table, session_web, csrf_guard, auth_guard and the query validator,
@@ -99,7 +100,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat history over HTTP', async () 
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
     const PASSWORD = 'secret-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 
     interface Page {

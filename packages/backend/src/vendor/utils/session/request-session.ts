@@ -10,6 +10,7 @@ import type {
     SessionDevice,
     SessionInfo,
 } from '#vendor/types/types.js'
+import { isValidEntityId } from 'shared/brand'
 import { USER_AGENT_MAX_LENGTH } from 'shared/utils'
 import sessionConfig from '#config/session.js'
 import {
@@ -231,6 +232,8 @@ export class RequestSession {
     /** login / logout replaced the session in this request: its own Set-Cookie is current. */
     private swapped = false
     private preSendCheck: PreSendCheck | null = null
+    /** Whether the warning about a stored user id that is not a row id was written. */
+    private invalidUserIdLogged = false
     /**
      * The user token of the signed-in session the request presented and `restore` verified
      * as current. Set once and never changed: login, logout and renewal in this request
@@ -476,16 +479,27 @@ export class RequestSession {
     }
 
     private isSignedIn(): boolean {
-        return Boolean(this.info.data.userId)
+        return this.userId() !== null
     }
 
     private getPresentedUserToken(): string | undefined {
         return this.presentedUserToken
     }
 
+    /**
+     * The id of the signed-in user, or null. A stored id that is not the canonical id of a row
+     * (feat-263, ADR 0007 Р13) is no user: the app brands it as a UserId from here, and a record
+     * that holds anything else is answered like an anonymous session (and logged once).
+     */
     private userId(): string | null {
         const userId = this.info.data.userId
-        return typeof userId === 'string' ? userId : null
+        if (typeof userId !== 'string' || userId === '') return null
+        if (isValidEntityId(userId)) return userId
+        if (!this.invalidUserIdLogged) {
+            this.invalidUserIdLogged = true
+            logger.warn('session holds a user id that is not a row id; treated as signed out')
+        }
+        return null
     }
 
     /**

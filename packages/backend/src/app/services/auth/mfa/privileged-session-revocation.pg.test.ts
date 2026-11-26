@@ -12,6 +12,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../../test-support/redis-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // docs/plan/passkeys-mfa-plan.md (Р13), on a real PostgreSQL and a real Redis: ending one session
 // of an administrator from the session list deletes its record without rotating
@@ -99,7 +100,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
     registerSessionTokenChecker(() => Promise.resolve('ok'))
 
     const redisAdmin = createTestRedis(PREFIX)
-    const created: bigint[] = []
+    const created: UserId[] = []
 
     beforeAll(async () => {
         await redisAdmin.connect()
@@ -135,7 +136,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
         created.push(row.id)
         return row
     }
-    const withTotp = (userId: bigint) =>
+    const withTotp = (userId: UserId) =>
         withTransaction((tx) =>
             totpFactorRepository.replace(
                 {
@@ -151,7 +152,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
         )
 
     /** A signed-in session of `user` stored in Redis, with its index member (feat-233). */
-    const signIn = async (user: { id: bigint; sessionToken: string }) => {
+    const signIn = async (user: { id: UserId; sessionToken: string }) => {
         const id = crypto.randomUUID().replaceAll('-', '')
         const publicId = sessionPublicId(id)
         const now = Date.now()
@@ -192,7 +193,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
     }
 
     /** A signed-in session made by `auth.login`, as a sign-in request makes it; its cookie. */
-    const signInOverHttp = async (user: { id: bigint; sessionToken: string }) => {
+    const signInOverHttp = async (user: { id: UserId; sessionToken: string }) => {
         const { context, responseData } = await requestWith(undefined)
         await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
         const cookie = responseData.cookies.get(sessionConfig.cookieName)?.value
@@ -207,7 +208,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
     }
 
     interface Newcomer {
-        id: bigint
+        id: UserId
         sessionToken: string
     }
     /**
@@ -254,15 +255,15 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             verified: { pwd: at },
         }
     }
-    const actorOf = (admin: { id: bigint }) => ({
+    const actorOf = (admin: { id: UserId }) => ({
         ...testAdminActor(admin.id),
         role: 'admin' as const,
     })
     const payloadOf = (result: unknown) =>
         appErrorToPayload((result as { error: Parameters<typeof appErrorToPayload>[0] }).error)
-    const roleOf = async (id: bigint) =>
+    const roleOf = async (id: UserId) =>
         (await db.select({ role: users.role }).from(users).where(eq(users.id, id)))[0]?.role
-    const roleEvents = (targetUserId: bigint) =>
+    const roleEvents = (targetUserId: UserId) =>
         db
             .select()
             .from(auditEvents)
@@ -294,7 +295,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
     const writes = {
         'role change': {
             target: () => insertUser('kb_editor'),
-            run: (admin: Admin, sessionStored: SessionStored, targetId: bigint) =>
+            run: (admin: Admin, sessionStored: SessionStored, targetId: UserId) =>
                 roleAssignmentService.assign({
                     actor: actorOf(admin),
                     targetUserId: targetId,
@@ -307,11 +308,11 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             hold: (pause: () => Promise<void>) => {
                 holdBefore(userRepository, 'updateRole', pause)
             },
-            unchanged: async (targetId: bigint) => {
+            unchanged: async (targetId: UserId) => {
                 expect(await roleOf(targetId)).toBe('kb_editor')
                 expect(await roleEvents(targetId)).toHaveLength(0)
             },
-            written: async (targetId: bigint) => {
+            written: async (targetId: UserId) => {
                 expect(await roleOf(targetId)).toBe('user')
                 expect(await roleEvents(targetId)).toHaveLength(1)
             },
@@ -322,7 +323,7 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
                 await withTotp(target.id)
                 return target
             },
-            run: (admin: Admin, sessionStored: SessionStored, targetId: bigint) =>
+            run: (admin: Admin, sessionStored: SessionStored, targetId: UserId) =>
                 mfaResetService.reset({
                     actor: actorOf(admin),
                     targetUserId: targetId,
@@ -334,10 +335,10 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             hold: (pause: () => Promise<void>) => {
                 holdBefore(totpFactorRepository, 'deleteByUserId', pause)
             },
-            unchanged: async (targetId: bigint) => {
+            unchanged: async (targetId: UserId) => {
                 expect((await loadMfaFactors(targetId)).totp).toBeDefined()
             },
-            written: async (targetId: bigint) => {
+            written: async (targetId: UserId) => {
                 expect((await loadMfaFactors(targetId)).totp).toBeUndefined()
             },
         },

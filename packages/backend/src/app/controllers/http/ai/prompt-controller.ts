@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { asUserId } from '#app/domain/ids.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { promptContracts } from 'shared/contracts'
@@ -73,7 +74,7 @@ export default {
         // context.signal: a client that went away cancels the provider call.
         const adminId = context.auth.getUserId()
         const result = await promptTestService.run(prompt.content, message, context.signal, {
-            userId: adminId === null ? null : BigInt(adminId),
+            userId: adminId === null ? null : asUserId(adminId),
             llmSystemPromptId: prompt.id,
         })
         if (Result.isError(result)) {

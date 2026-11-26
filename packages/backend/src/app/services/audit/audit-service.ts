@@ -16,6 +16,7 @@ import {
     type DbTransaction,
 } from '#app/repositories/index.js'
 import type { AuditActor, AuditLogger } from './audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 declare const stampBrand: unique symbol
 
@@ -35,7 +36,7 @@ export type AuditEventInput = {
         action: A
         targetId: string
         /** Whose account the change concerns; for a `user` target it is the target itself. */
-        targetUserId?: bigint | null
+        targetUserId?: UserId | null
         input: AuditInputs[A]
     }
 }[AuditAction]

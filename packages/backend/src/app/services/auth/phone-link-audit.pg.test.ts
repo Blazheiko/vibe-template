@@ -5,6 +5,7 @@ import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { auditLogLines, testAdminActor } from '../../../test-support/audit-actor.js'
 import { appErrorMessage } from '../shared/errors.js'
+import type { SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 // feat-235 (Р3, T5.5) on a real PostgreSQL: linking a phone confirms its SMS code in the
 // transaction that writes the number and the `auth.phone.linked` event, under the user's row
@@ -51,7 +52,7 @@ describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async ()
     }
 
     const now = Date.now()
-    const userIds: bigint[] = []
+    const userIds: UserId[] = []
     let counter = 0
 
     const nextPhone = (): string => {
@@ -89,7 +90,7 @@ describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async ()
         userIds.push(user.id)
         return user
     }
-    const insertChallenge = async (userId: bigint, phone: string) => {
+    const insertChallenge = async (userId: UserId, phone: string) => {
         const [challenge] = await db
             .insert(smsAuthChallenges)
             .values({
@@ -111,7 +112,7 @@ describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async ()
         return { user, phone, challenge }
     }
     const confirm = (
-        user: { id: bigint; sessionToken: string },
+        user: { id: UserId; sessionToken: string },
         challengeId: string,
         actor = testAdminActor(user.id),
     ) =>
@@ -126,16 +127,16 @@ describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async ()
             },
             actor,
         )
-    const challengeRow = async (id: string) => {
+    const challengeRow = async (id: SmsChallengeId) => {
         const [row] = await db.select().from(smsAuthChallenges).where(eq(smsAuthChallenges.id, id))
         if (row === undefined) throw new Error('challenge gone')
         return row
     }
-    const phoneOf = async (id: bigint) => {
+    const phoneOf = async (id: UserId) => {
         const [row] = await db.select({ phone: users.phone }).from(users).where(eq(users.id, id))
         return row?.phone ?? null
     }
-    const eventsOf = (userId: bigint) =>
+    const eventsOf = (userId: UserId) =>
         db
             .select()
             .from(auditEvents)

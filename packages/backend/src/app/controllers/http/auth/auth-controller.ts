@@ -1,4 +1,5 @@
 import { stepUpService } from '#app/services/auth/mfa/step-up.js'
+import { toEntityId, asUserId } from '#app/domain/ids.js'
 import {
     completeSecondStep,
     secondStepPasskeyOptions,
@@ -257,7 +258,7 @@ export default {
             // feat-221: the service spared this session's connections for the renewal. Without
             // one they belong to a revoked session; the client signs in again.
             if (sessionId !== undefined) {
-                wsSessionRevocation.closeUserConnections(String(userId), { sessionId })
+                wsSessionRevocation.closeUserConnections(toEntityId(userId), { sessionId })
             }
             return { status: 'success', sessionRenewed: false }
         }
@@ -336,7 +337,7 @@ export default {
             payload.token,
             { ipAddress: context.httpData.ip ?? '' },
             {
-                userId: userId === null ? null : BigInt(userId),
+                userId: userId === null ? null : asUserId(userId),
                 presentedSessionToken: context.auth.getPresentedUserToken(),
                 ...(payload.password !== undefined ? { password: payload.password } : {}),
             },

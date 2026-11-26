@@ -2,7 +2,7 @@ import type { HttpContext } from '#vendor/types/types.js'
 import type { AdminAuditEventsQuery } from 'shared/schemas'
 import type { AdminAuditEventsResponse } from 'shared/responses'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { parseUserId } from '#app/domain/ids.js'
 import { badRequest } from '#app/services/shared/errors.js'
 import { auditEventsQueryService } from '#app/services/admin/audit-events-query-service.js'
 import { guardedRoleOf } from '#app/controllers/shared/audit-actor.js'
@@ -16,9 +16,9 @@ export default {
     ): Promise<AdminAuditEventsResponse> {
         const query = context.httpData.query
         const actorUserId =
-            query.actorUserId === undefined ? undefined : parseEntityId(query.actorUserId)
+            query.actorUserId === undefined ? undefined : parseUserId(query.actorUserId)
         const targetUserId =
-            query.targetUserId === undefined ? undefined : parseEntityId(query.targetUserId)
+            query.targetUserId === undefined ? undefined : parseUserId(query.targetUserId)
         if (actorUserId === null || targetUserId === null) {
             return mapControllerError(context, badRequest('Invalid user id', 'invalid_user_id'))
         }

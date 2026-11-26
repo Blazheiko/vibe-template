@@ -159,6 +159,10 @@ SELECT extversion FROM pg_extension WHERE extname = 'vector';
 - The column dimension is `1536` (`EMBEDDING_COLUMN_DIMENSIONS`); `OPENAI_EMBEDDING_DIMENSIONS` must match it, otherwise startup stops. A different model or dimension requires a column migration and re-indexing of the articles.
 - There is no vector index (HNSW / IVFFlat), so the search scans all active articles. For a support knowledge base of hundreds of articles this is enough; for larger volumes, add an index `USING hnsw (embedding vector_cosine_ops)` with a migration.
 
+## Branded ids
+
+Row ids are branded types ([ADR 0007](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0007-branded-types.md), feat-263). They are declared in [`database/ids.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/ids.ts) (`UserId`, `OAuthAccountId`, `PasskeyId`, `TotpFactorId`, `OneTimeTokenRowId` for the four one-time token tables, `SmsChallengeId`, a nanoid string) and put on the columns with `.$type<…>()`: `users.id` and every column holding a user id (`user_id`, `actor_user_id`, `target_user_id`) are `UserId`. `$type` changes only the TypeScript type: the SQL and the migrations are the same, and `db:generate` sees no change. The schema imports the brands with a relative `import type`, since drizzle-kit loads it without the `#` aliases. The tables of the other domains get their brands in later features.
+
 ## Migrations
 
 Migrations live in [`src/drizzle/migrations`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations) in the Drizzle 1.0 "folder per migration" format: each `<timestamp>_<name>` folder contains `migration.sql` and `snapshot.json`. Since `1.0.0-rc.5`, snapshots are incremental (version `9`): the first migration stores the full schema (`ddl`), the following ones only the difference (`deltas`). drizzle-kit does not accept a snapshot in the older format and asks you to run `drizzle-kit up`; this conversion does not change the migration SQL:

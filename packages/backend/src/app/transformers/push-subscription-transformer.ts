@@ -1,4 +1,5 @@
 import type { PushSubscriptionRow, PushSubscriptionWithLogs } from '#app/repositories/index.js'
+import { toEntityId } from '#app/domain/ids.js'
 import {
     pushNotificationLogTransformer,
     type SerializedPushLogSummary,
@@ -53,7 +54,7 @@ export const pushSubscriptionTransformer = {
         return {
             ...rest,
             id: String(id),
-            userId: String(userId),
+            userId: toEntityId(userId),
             created_at: createdAt.toISOString(),
             updated_at: updatedAt.toISOString(),
             lastUsedAt: lastUsedAt !== null ? lastUsedAt.toISOString() : null,
@@ -79,7 +80,7 @@ export const pushSubscriptionTransformer = {
                 pushNotificationLogTransformer.serializeSummary(log),
             ),
             id: String(id),
-            userId: String(userId),
+            userId: toEntityId(userId),
             created_at: createdAt.toISOString(),
             updated_at: updatedAt.toISOString(),
             lastUsedAt: lastUsedAt !== null ? lastUsedAt.toISOString() : null,

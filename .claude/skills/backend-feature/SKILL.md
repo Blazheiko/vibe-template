@@ -105,8 +105,9 @@ Append to `packages/backend/src/database/schema.ts`:
 export const notes = pgTable(
     'notes',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<NoteId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         title: varchar('title', { length: 200 }).notNull(),
@@ -121,6 +122,11 @@ export const notes = pgTable(
 )
 ```
 
+- Branded ids (ADR 0007): declare `export type NoteId = Brand<bigint, 'NoteId'>` in
+  `src/database/ids.ts`, add it to the relative `import type` at the top of `schema.ts`, and every
+  user id column takes `.$type<UserId>()`. In `src/app/domain/ids.ts` re-export the type and add
+  `parseNoteId` next to `parseUserId` (no `#` imports there: drizzle-kit loads the schema without
+  aliases). `$type` changes no SQL; `db:generate` must report no schema change for it.
 - `timestamp` without time zone; connections run with `TimeZone=UTC` (`database/pool-options.ts`).
 - Relations, if needed, go into `src/database/relations.ts` (Relational Queries v2, `defineRelations`).
 - Generate (no DB needed): `pnpm --filter backend db:generate --name add_notes` → folder
@@ -133,7 +139,8 @@ export const notes = pgTable(
 `note/`, `notifications/`). Drizzle only: no HTTP, no logging (`layering.spec.ts` forbids `#logger`),
 no business decisions. Export an `I…Repository` interface and an object implementing it. Methods that
 may run inside a transaction take `executor: DbExecutor = db` (`../transaction.js`). Scope user-owned
-queries by `userId`.
+queries by `userId`. Ids are branded (`UserId`, `NoteId`) and the owner comes first: `(userId, id, data)`
+(ADR 0007, Р11); two ids of one brand (an admin and a target user) go in an object parameter.
 
 ```ts
 import { db } from '#database/db.js'
@@ -141,6 +148,7 @@ import { notes } from '#database/schema.js'
 import { and, desc, eq } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
+import type { NoteId, UserId } from '#app/domain/ids.js'
 
 export type NoteRow = InferSelectModel<typeof notes>
 export type NoteInsert = InferInsertModel<typeof notes>
@@ -148,15 +156,15 @@ export type NoteUpdate = Partial<Pick<NoteInsert, 'title' | 'body'>>
 
 export interface INoteRepository {
     create(data: NoteInsert, executor?: DbExecutor): Promise<NoteRow>
-    findByIdAndUserId(id: bigint, userId: bigint): Promise<NoteRow | undefined>
-    findByUserId(userId: bigint): Promise<NoteRow[]>
+    findForUser(userId: UserId, id: NoteId): Promise<NoteRow | undefined>
+    findByUserId(userId: UserId): Promise<NoteRow[]>
     update(
-        id: bigint,
-        userId: bigint,
+        userId: UserId,
+        id: NoteId,
         data: NoteUpdate,
         executor?: DbExecutor,
     ): Promise<NoteRow | undefined>
-    delete(id: bigint, userId: bigint): Promise<boolean>
+    delete(userId: UserId, id: NoteId): Promise<boolean>
 }
 
 export const noteRepository: INoteRepository = {
@@ -165,7 +173,7 @@ export const noteRepository: INoteRepository = {
         if (created === undefined) throw new Error('Failed to create note')
         return created
     },
-    async findByIdAndUserId(id, userId) {
+    async findForUser(userId, id) {
         return await db
             .select()
             .from(notes)
@@ -180,7 +188,7 @@ export const noteRepository: INoteRepository = {
             .where(eq(notes.userId, userId))
             .orderBy(desc(notes.createdAt))
     },
-    async update(id, userId, data, executor = db) {
+    async update(userId, id, data, executor = db) {
         const [updated] = await executor
             .update(notes)
             .set(data)
@@ -188,7 +196,7 @@ export const noteRepository: INoteRepository = {
             .returning()
         return updated
     },
-    async delete(id, userId) {
+    async delete(userId, id) {
         const deleted = await db
             .delete(notes)
             .where(and(eq(notes.id, id), eq(notes.userId, userId)))
@@ -205,17 +213,18 @@ Export value **and** types from the barrel `repositories/index.ts` — `layering
 ## Step 6: Transformer
 
 `packages/backend/src/app/transformers/<resource>-transformer.ts`, exported from `transformers/index.ts`.
-`bigint` → `String(id)`, `Date` → `toISOString()` (no luxon). Return the shared wire type (`Note`) and
+an id → `toEntityId(id)` (`#app/domain/ids.js`), `Date` → `toISOString()` (no luxon). Return the shared wire type (`Note`) and
 list fields explicitly — don't spread the row, so server-only columns (`userId`, keys, IPs) never leak.
 
 ```ts
 import type { Note } from 'shared'
+import { toEntityId } from '#app/domain/ids.js'
 import type { NoteRow } from '#app/repositories/index.js'
 
 export const noteTransformer = {
     serialize(note: NoteRow): Note {
         return {
-            id: String(note.id),
+            id: toEntityId(note.id),
             title: note.title,
             body: note.body,
             created_at: note.createdAt.toISOString(),
@@ -244,17 +253,18 @@ import { noteRepository } from '#app/repositories/index.js'
 import { noteTransformer } from '#app/transformers/index.js'
 import { notFound, type AppResult } from '#app/services/shared/errors.js'
 import { withCurrentSession } from '#app/services/auth/session-guard.js'
+import type { NoteId, UserId } from '#app/domain/ids.js'
 
 const noteNotFound = () => notFound('Note', 'Note not found')
 
 export const noteService = {
-    async getNotes(userId: bigint): Promise<AppResult<{ notes: Note[] }>> {
+    async getNotes(userId: UserId): Promise<AppResult<{ notes: Note[] }>> {
         const rows = await noteRepository.findByUserId(userId)
         return Result.ok({ notes: noteTransformer.serializeArray(rows) })
     },
 
-    async getNote(userId: bigint, noteId: bigint): Promise<AppResult<{ note: Note }>> {
-        const row = await noteRepository.findByIdAndUserId(noteId, userId)
+    async getNote(userId: UserId, noteId: NoteId): Promise<AppResult<{ note: Note }>> {
+        const row = await noteRepository.findForUser(userId, noteId)
         if (row === undefined) return Result.err(noteNotFound())
         return Result.ok({ note: noteTransformer.serialize(row) })
     },
@@ -262,7 +272,7 @@ export const noteService = {
     // Only if an account claim must be able to undo the write (feat-098): runs under the user's
     // row lock while the presented session token is current, else 401 session_revoked.
     async createNote(
-        userId: bigint,
+        userId: UserId,
         payload: CreateNoteInput,
         presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ note: Note }>> {
@@ -275,8 +285,8 @@ export const noteService = {
         })
     },
 
-    async deleteNote(userId: bigint, noteId: bigint): Promise<AppResult<null>> {
-        const deleted = await noteRepository.delete(noteId, userId)
+    async deleteNote(userId: UserId, noteId: NoteId): Promise<AppResult<null>> {
+        const deleted = await noteRepository.delete(userId, noteId)
         return deleted ? Result.ok(null) : Result.err(noteNotFound())
     },
 }
@@ -290,10 +300,11 @@ write that must roll back on `Result.err` uses `withTransactionResult` (`service
 `packages/backend/src/app/controllers/http/<domain>/<resource>-controller.ts`, default-exported plain
 object. Transport only. Use the shared helpers — don't write local status maps:
 
-- `requireUserId(context)` (`#app/controllers/shared/require-user-id.js`) → `bigint | null`;
+- `requireUserId(context)` (`#app/controllers/shared/require-user-id.js`) → `UserId | null`;
   on `null` return `mapControllerError(context, unauthorized())`.
-- `parseEntityId(raw)` (`#app/controllers/shared/parse-id.js`) for path ids — a non-numeric id is a
-  404, never a `BigInt` 500.
+- `parseNoteId(raw)` (`#app/domain/ids.js`, one constructor per brand) for path ids — anything that
+  is not a row id (`0`, `007`, past `bigint`) is a 404, never a `BigInt` 500. Never cast an id
+  (`as NoteId`): `local/no-brand-cast` fails the lint outside `app/domain` and tests.
 - `respond(context, result, toBody)` (`#app/controllers/shared/controller-error.js`) ends a handler.
 - Type params from the contract: `HttpContext<Payload, Query, ParamsOf<typeof noteContracts.get>>`
   (`ParamsOf` from `#app/routing/contract-registry.js`) — a renamed `:noteId` then breaks the build.
@@ -307,7 +318,7 @@ import type { noteContracts } from 'shared/contracts'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { parseNoteId } from '#app/domain/ids.js'
 import { noteService } from '#app/services/note/note-service.js'
 import { notFound, unauthorized } from '#app/services/shared/errors.js'
 import type { CreateNoteResponse, GetNoteResponse, GetNotesResponse } from 'shared'
@@ -329,7 +340,7 @@ export default {
     ): Promise<GetNoteResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
-        const noteId = parseEntityId(context.httpData.params.noteId)
+        const noteId = parseNoteId(context.httpData.params.noteId)
         if (noteId === null) return mapControllerError(context, notFound('Note', 'Note not found'))
 
         const result = await noteService.getNote(userId, noteId)
@@ -504,11 +515,11 @@ Same chain (ADR 0006, `docs/adr/0006-websocket-contracts.md`): contract → regi
 - [ ] Feature row + branch + `feature-state/<feat-id>/progress.md` (Step 0)
 - [ ] Input schemas (`@arktype/type`, bounded, `'+': 'reject'`) exported from `schemas/index.ts`
 - [ ] Response schemas (`type.or(..., CanonicalErrorResponseSchema)`, allow-list) exported from `responses/index.ts`
-- [ ] Table + generated migration folder (`db:generate --name …`), relations if needed
+- [ ] Table + generated migration folder (`db:generate --name …`), relations if needed; id brand in `database/ids.ts` + `$type`, constructor in `app/domain/ids.ts`
 - [ ] Repository in a domain subfolder, interface + object, exported (value + types) from the barrel
 - [ ] Transformer (string ids, ISO dates, explicit fields) exported from `transformers/index.ts`
 - [ ] Service returns `AppResult`, uses `errors.ts` helpers, `withCurrentSession` where a claim must undo the write
-- [ ] Controller uses `requireUserId`, `parseEntityId`, `respond`, `ParamsOf`, annotated return type
+- [ ] Controller uses `requireUserId`, `parse<Resource>Id`, `respond`, `ParamsOf`, annotated return type
 - [ ] Contract group exported from `contracts/index.ts`; registry passed to `mergeContractSchemas`
 - [ ] Route group with `defineRoute` and the right middlewares
 - [ ] `shared` rebuilt; service spec added; typecheck/lint/test/format clean
@@ -521,6 +532,8 @@ Same chain (ADR 0006, `docs/adr/0006-websocket-contracts.md`): contract → regi
 - Repositories: Drizzle only, no logging. Services: no `#database/db.js` / `#database/schema.js`.
 - Services return `AppResult<T>` for expected outcomes; unexpected failures throw.
 - Never return a `bigint` or `Date` from a controller — always through the transformer.
+- Ids are branded (ADR 0007): a value becomes a `UserId` / `NoteId` only through its constructor or a
+  schema; repository and service methods take the owner first (`userId, id`).
 - Shared package: types and schemas only, no Node.js imports. Contracts import schemas as types only.
 - Aliases: `#app/*`, `#config/*`, `#vendor/*`, `#database/*`, `#drizzle/*`, `#logger`; no `../../` across layers.
 - Periodic work (a clean-up, a retention) is a scheduled job over a service method, not a cron

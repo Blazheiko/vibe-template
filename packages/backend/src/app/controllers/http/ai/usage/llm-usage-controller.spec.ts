@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../../../test-support/ids.js'
 
 import { type } from '@arktype/type'
 import { GetTextUsageResponseSchema } from 'shared'
@@ -53,7 +54,7 @@ describe('LlmUsageController.getTextUsage (item 53)', () => {
             rows: [
                 {
                     id: 2n,
-                    userId: 7n,
+                    userId: uid(7),
                     model: 'gpt',
                     feature: 'SUPPORT_CHAT',
                     finalPrompt: '',
@@ -87,7 +88,7 @@ describe('LlmUsageController.getTextUsage (item 53)', () => {
             rows: [
                 {
                     id: 3n,
-                    userId: 7n,
+                    userId: uid(7),
                     model: 'gpt',
                     feature: 'PROMPT_TEST',
                     finalPrompt: 'the prompt',

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -14,8 +15,8 @@ describe.skipIf(!hasPg)('supportRepository.addUserMessageOnce on PostgreSQL', as
     const { users, supportChatHistory } = await import('#database/schema.js')
     const { supportRepository } = await import('#app/repositories/index.js')
 
-    const created: bigint[] = []
-    const newUser = async (): Promise<bigint> => {
+    const created: UserId[] = []
+    const newUser = async (): Promise<UserId> => {
         const [row] = await db
             .insert(users)
             .values({ name: 'support-test', email: `${crypto.randomUUID()}@example.test` })
@@ -24,7 +25,7 @@ describe.skipIf(!hasPg)('supportRepository.addUserMessageOnce on PostgreSQL', as
         created.push(row.id)
         return row.id
     }
-    const rowsOf = (userId: bigint) =>
+    const rowsOf = (userId: UserId) =>
         db.select().from(supportChatHistory).where(eq(supportChatHistory.userId, userId))
 
     afterAll(async () => {
@@ -96,8 +97,8 @@ describe.skipIf(!hasPg)('supportRepository history reads on PostgreSQL', async (
     const { users } = await import('#database/schema.js')
     const { supportRepository } = await import('#app/repositories/index.js')
 
-    const created: bigint[] = []
-    const newUser = async (): Promise<bigint> => {
+    const created: UserId[] = []
+    const newUser = async (): Promise<UserId> => {
         const [row] = await db
             .insert(users)
             .values({ name: 'history-test', email: `${crypto.randomUUID()}@example.test` })
@@ -107,7 +108,7 @@ describe.skipIf(!hasPg)('supportRepository history reads on PostgreSQL', async (
         return row.id
     }
     // Messages m1 … mN in order; returns their ids.
-    const conversation = async (userId: bigint, count: number): Promise<bigint[]> => {
+    const conversation = async (userId: UserId, count: number): Promise<bigint[]> => {
         const ids: bigint[] = []
         for (let i = 1; i <= count; i++) {
             const row = await supportRepository.addChatMessage(

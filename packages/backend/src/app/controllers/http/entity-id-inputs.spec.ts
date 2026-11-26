@@ -11,6 +11,7 @@ import {
 } from 'shared/schemas'
 import { notFound } from '#app/services/shared/errors.js'
 import type * as AuditEventsQuery from '#app/services/admin/audit-events-query-service.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-262 (plan, contract table): every input that carries a row id, with '0', '007' and 2^63.
 // Each controller is called with its services mocked, so the test sees what reaches the service
@@ -182,7 +183,7 @@ describe('feat-262 contract table: controller inputs', () => {
             status: 400,
             run: (raw: string) =>
                 call((c) => AdminUserController.list(c), { query: { userId: raw, limit: 20 } }),
-            got: () => firstArg(mocks.listUsers, (a) => (a[0] as { userId?: bigint }).userId),
+            got: () => firstArg(mocks.listUsers, (a) => (a[0] as { userId?: UserId }).userId),
         },
         {
             name: 'admin users ?cursor',
@@ -200,7 +201,7 @@ describe('feat-262 contract table: controller inputs', () => {
                     payload: { role: 'user' },
                 }),
             got: () =>
-                firstArg(mocks.assign, (a) => (a[0] as { targetUserId: bigint }).targetUserId),
+                firstArg(mocks.assign, (a) => (a[0] as { targetUserId: UserId }).targetUserId),
         },
         {
             name: 'admin users :id (resetMfa)',
@@ -211,7 +212,7 @@ describe('feat-262 contract table: controller inputs', () => {
                     payload: { reason: 'lost device' },
                 }),
             got: () =>
-                firstArg(mocks.reset, (a) => (a[0] as { targetUserId: bigint }).targetUserId),
+                firstArg(mocks.reset, (a) => (a[0] as { targetUserId: UserId }).targetUserId),
         },
         {
             name: 'online history ?userId',
@@ -220,7 +221,7 @@ describe('feat-262 contract table: controller inputs', () => {
                 call((c) => AdminOnlineHistoryController.list(c), {
                     query: { userId: raw, limit: 20 },
                 }),
-            got: () => firstArg(mocks.listHistory, (a) => (a[0] as { userId?: bigint }).userId),
+            got: () => firstArg(mocks.listHistory, (a) => (a[0] as { userId?: UserId }).userId),
         },
         {
             name: 'online history ?cursor',
@@ -374,7 +375,7 @@ describe('feat-262 contract table: controller inputs', () => {
         expect(
             firstArg(
                 mocks.getTextUsage,
-                (a) => (a[0] as { filter: { userId?: bigint } }).filter.userId,
+                (a) => (a[0] as { filter: { userId?: UserId } }).filter.userId,
             ),
         ).toBeUndefined()
     })
@@ -387,7 +388,7 @@ describe('feat-262 contract table: controller inputs', () => {
         expect(
             firstArg(
                 mocks.getTextUsage,
-                (a) => (a[0] as { filter: { userId?: bigint } }).filter.userId,
+                (a) => (a[0] as { filter: { userId?: UserId } }).filter.userId,
             ),
         ).toBe(42n)
     })

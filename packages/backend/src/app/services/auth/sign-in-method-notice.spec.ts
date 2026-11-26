@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-198 (security review 2026-11-12, M-2): the notice that another provider's identity was
@@ -17,7 +18,7 @@ const { notifySignInMethodAdded, renderSignInMethodAddedEmail } =
     await import('./sign-in-method-notice.js')
 
 const notice = (over: Record<string, unknown> = {}) => ({
-    userId: 5n,
+    userId: uid(5),
     email: 'owner@example.com',
     name: 'Account Owner',
     provider: 'github',

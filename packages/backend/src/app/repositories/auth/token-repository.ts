@@ -1,4 +1,5 @@
 import { db } from '#database/db.js'
+import type { OneTimeTokenRowId } from '#app/domain/ids.js'
 import type { DbExecutor } from '../transaction.js'
 import { expiredRowsRepository, type ExpiredRowsRepository } from './expired-rows.js'
 import type {
@@ -8,6 +9,7 @@ import type {
     passwordResetTokens,
 } from '#database/schema.js'
 import { and, eq, gt, isNull, sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm'
+import type { UserId } from '#app/domain/ids.js'
 
 /**
  * The three one-time-token tables (password reset, e-mail verification, e-mail linking) have the
@@ -34,16 +36,16 @@ export interface ITokenRepository<TRow, TInsert> {
      * Retires every pending token of the user in this table. No exception by id: ids of
      * different tables are unrelated, and a consumed token is no longer pending anyway.
      */
-    invalidatePendingByUserId(userId: bigint, executor?: DbExecutor): Promise<number>
+    invalidatePendingByUserId(userId: UserId, executor?: DbExecutor): Promise<number>
     /**
      * Claims the token: `used_at` is set only if it is still NULL and the token has not
      * expired at this instant (`clock_timestamp()`), so of two concurrent requests with one
      * token exactly one gets the row back. Undefined: used or expired. Pass the transaction
      * in which the token's effect is applied.
      */
-    markUsed(id: bigint, executor?: DbExecutor): Promise<TRow | undefined>
+    markUsed(id: OneTimeTokenRowId, executor?: DbExecutor): Promise<TRow | undefined>
     /** Marks an expired token used, so it is gone for good. No expiry condition. */
-    burn(id: bigint): Promise<void>
+    burn(id: OneTimeTokenRowId): Promise<void>
 }
 
 /**

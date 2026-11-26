@@ -1,4 +1,5 @@
 import { roleHasPermission, type Permission } from 'shared/access'
+import { asUserId } from '#app/domain/ids.js'
 import { MFA_REASONS } from 'shared/mfa'
 
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
@@ -26,7 +27,7 @@ function deny(context: HttpContext, reason?: string): void {
  */
 async function staffMfaRefusal(context: HttpContext, userId: string): Promise<string | null> {
     if (!mfaConfig.requiredForStaff) return null
-    const factors = await loadMfaFactors(BigInt(userId))
+    const factors = await loadMfaFactors(asUserId(userId))
     if (!staffPolicy().enrolled({ totp: factors.totp !== undefined, passkeys: factors.passkeys })) {
         return MFA_REASONS.mfaRequired
     }
@@ -48,7 +49,7 @@ export function permissionGuard(permission: Permission): Middleware {
             deny(context)
             return
         }
-        const role = await userRoleService.findRole(BigInt(userId))
+        const role = await userRoleService.findRole(asUserId(userId))
         if (role === undefined || !roleHasPermission(role, permission)) {
             deny(context)
             return

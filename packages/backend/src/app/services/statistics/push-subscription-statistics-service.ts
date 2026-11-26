@@ -4,6 +4,7 @@ import {
 } from '#app/repositories/index.js'
 import { pushSubscriptionTransformer } from '#app/transformers/index.js'
 import type { SerializedPushSubscription } from '#app/transformers/push-subscription-transformer.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export interface PushSubscriptionStatistics {
     totalNotifications: number
@@ -25,7 +26,7 @@ export interface PushSubscriptionStatisticsResult {
 
 export async function getPushSubscriptionStatistics(
     subscriptionId: bigint,
-    userId: bigint,
+    userId: UserId,
 ): Promise<PushSubscriptionStatisticsResult | undefined> {
     const subscription = await pushSubscriptionRepository.findByIdAndUserId(subscriptionId, userId)
     if (subscription === undefined) {

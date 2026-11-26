@@ -4,11 +4,12 @@ import type { InferSelectModel } from 'drizzle-orm'
 import { db } from '#database/db.js'
 import { users, webauthnCredentials } from '#database/schema.js'
 import type { DbExecutor } from '../transaction.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 export type WebAuthnCredentialRow = InferSelectModel<typeof webauthnCredentials>
 
 export interface NewWebAuthnCredential {
-    userId: bigint
+    userId: UserId
     credentialId: Buffer
     publicKey: Buffer
     signCount: bigint
@@ -26,34 +27,34 @@ export type CounterOutcome = 'advanced' | 'regressed' | 'gone'
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6, Р9). The writes that change what an account can
 // sign in with (insert, delete) run in the caller's transaction under the user's row lock.
 export interface IWebAuthnCredentialRepository {
-    listByUserId(userId: bigint, executor?: DbExecutor): Promise<WebAuthnCredentialRow[]>
-    countByUserId(userId: bigint, executor?: DbExecutor): Promise<number>
+    listByUserId(userId: UserId, executor?: DbExecutor): Promise<WebAuthnCredentialRow[]>
+    countByUserId(userId: UserId, executor?: DbExecutor): Promise<number>
     findByCredentialId(
         credentialId: Buffer,
         executor?: DbExecutor,
     ): Promise<WebAuthnCredentialRow | undefined>
     /** The key a registration with this enrollment created, if it is still the user's. */
     findByEnrollment(
-        userId: bigint,
+        userId: UserId,
         enrollmentId: string,
         executor?: DbExecutor,
     ): Promise<WebAuthnCredentialRow | undefined>
     insert(credential: NewWebAuthnCredential, tx: DbExecutor): Promise<WebAuthnCredentialRow>
     /** Renames a key of the user; false when it is not the user's (or gone). */
-    rename(id: bigint, userId: bigint, name: string, executor?: DbExecutor): Promise<boolean>
+    rename(userId: UserId, id: PasskeyId, name: string, executor?: DbExecutor): Promise<boolean>
     /** Removes a key of the user; false when it is not the user's (or gone). */
-    deleteOne(id: bigint, userId: bigint, tx: DbExecutor): Promise<boolean>
+    deleteOne(userId: UserId, id: PasskeyId, tx: DbExecutor): Promise<boolean>
     /** Removes every key of the user and the user handle (claimLocked); the number removed. */
-    deleteAllOfUser(userId: bigint, tx: DbExecutor): Promise<number>
+    deleteAllOfUser(userId: UserId, tx: DbExecutor): Promise<number>
     /**
      * Records a verified signature (Р6). A counter of 0 on both sides is fine (an authenticator
      * without a counter, a synced passkey); otherwise the stored counter only grows:
      * `sign_count < new`. 'regressed' when the key exists and the counter did not grow.
      */
-    recordUse(id: bigint, newCount: bigint, executor?: DbExecutor): Promise<CounterOutcome>
+    recordUse(id: PasskeyId, newCount: bigint, executor?: DbExecutor): Promise<CounterOutcome>
     /** The WebAuthn user.id of the account, made from `candidate` when it has none yet. */
-    ensureUserHandle(userId: bigint, candidate: Buffer, tx: DbExecutor): Promise<Buffer>
-    userHandleOf(userId: bigint, executor?: DbExecutor): Promise<Buffer | null>
+    ensureUserHandle(userId: UserId, candidate: Buffer, tx: DbExecutor): Promise<Buffer>
+    userHandleOf(userId: UserId, executor?: DbExecutor): Promise<Buffer | null>
 }
 
 export const webauthnCredentialRepository: IWebAuthnCredentialRepository = {
@@ -105,7 +106,7 @@ export const webauthnCredentialRepository: IWebAuthnCredentialRepository = {
         return created
     },
 
-    async rename(id, userId, name, executor = db) {
+    async rename(userId, id, name, executor = db) {
         const updated = await executor
             .update(webauthnCredentials)
             .set({ name })
@@ -114,7 +115,7 @@ export const webauthnCredentialRepository: IWebAuthnCredentialRepository = {
         return updated.length > 0
     },
 
-    async deleteOne(id, userId, tx) {
+    async deleteOne(userId, id, tx) {
         const removed = await tx
             .delete(webauthnCredentials)
             .where(and(eq(webauthnCredentials.id, id), eq(webauthnCredentials.userId, userId)))

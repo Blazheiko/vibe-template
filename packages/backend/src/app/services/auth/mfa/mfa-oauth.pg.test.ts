@@ -9,6 +9,7 @@ import {
     hasRedis,
 } from '../../../../test-support/redis-test-client.js'
 import { testRequest } from '../../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, row 16 of Р3, Р9, tasks M8) on a real PostgreSQL
 // and Redis, with the real session layer: an OAuth sign-in of an account with a second factor
@@ -119,7 +120,7 @@ describe.skipIf(!hasPg || !hasRedis)(
         await import('#app/start/index.js')
 
         const admin = createTestRedis(PREFIX)
-        const created: bigint[] = []
+        const created: UserId[] = []
 
         beforeAll(async () => {
             await admin.connect()
@@ -216,7 +217,7 @@ describe.skipIf(!hasPg || !hasRedis)(
             return { row, email, code: () => hotp(secret, totpStepAt(Date.now())), codes }
         }
 
-        const linksOf = (userId: bigint) =>
+        const linksOf = (userId: UserId) =>
             db.select().from(oauthAccounts).where(eq(oauthAccounts.userId, userId))
 
         const callback = async (cookies: Map<string, string>) => {

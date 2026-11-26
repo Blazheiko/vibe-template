@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import { uid } from '../../../test-support/ids.js'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -12,6 +13,7 @@ import {
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
 import { isStaffRole, type Role } from 'shared/access'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-235 T6 and T6a: GET /admin/audit-events over HTTP with the real route table, session_web,
 // csrf_guard, auth_guard and admin_guard, against a real PostgreSQL and Redis: who may read the
@@ -122,7 +124,7 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
 
     const redisAdmin = createTestRedis(PREFIX)
     const now = Date.now()
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
     let inserted = 0
 
@@ -211,7 +213,7 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
             expect(verified.status).toBe(200)
         }
 
-        setRole(id: bigint | string, body: unknown): Promise<Reply> {
+        setRole(id: UserId | string, body: unknown): Promise<Reply> {
             return this.request('PATCH', `/admin/users/${String(id)}/role`, body)
         }
 
@@ -264,7 +266,7 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
         await pool.end()
     })
 
-    const roleOf = async (id: bigint): Promise<Role | undefined> => {
+    const roleOf = async (id: UserId): Promise<Role | undefined> => {
         const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, id))
         return row?.role
     }
@@ -359,7 +361,7 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
             reason: 'identity_unverified',
         })
 
-        expect((await browser.setRole(9_000_000_000_000n, { role: 'user' })).status).toBe(404)
+        expect((await browser.setRole(uid(9_000_000_000_000), { role: 'user' })).status).toBe(404)
         expect((await browser.setRole('abc', { role: 'user' })).status).toBe(400)
         expect((await browser.setRole(unverified.id, { role: 'root' })).status).toBe(422)
         expect((await browser.setRole(unverified.id, { role: 'user', extra: 1 })).status).toBe(422)

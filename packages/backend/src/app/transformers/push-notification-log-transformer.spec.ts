@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { uid } from '../../test-support/ids.js'
 
 import { pushNotificationLogTransformer } from './push-notification-log-transformer.js'
 
 const row = {
     id: 11n,
-    userId: 7n,
+    userId: uid(7),
     subscriptionId: 3n,
     messageTitle: 'Hi',
     messageBody: 'Body',

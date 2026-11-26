@@ -3,16 +3,17 @@ import { userOnline } from '#database/schema.js'
 import { and, count, desc, eq, gte, lt } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
+import type { UserId, UserOnlineId } from '#app/domain/ids.js'
 
 export type UserOnlineRow = InferSelectModel<typeof userOnline>
 export type UserOnlineInsert = InferInsertModel<typeof userOnline>
 export type UserOnlineUpdate = Partial<Omit<UserOnlineInsert, 'id'>>
 
 export interface UserOnlineHistoryFilters {
-    userId?: bigint
+    userId?: UserId
     dateFrom?: Date
     dateTo?: Date
-    cursor?: bigint
+    cursor?: UserOnlineId
     limit?: number
 }
 
@@ -20,7 +21,7 @@ export interface IUserOnlineRepository {
     create(data: UserOnlineInsert): Promise<UserOnlineRow>
     findBySocketUuid(socketUuid: string): Promise<UserOnlineRow | undefined>
     completeBySocketUuid(socketUuid: string, data: UserOnlineUpdate): Promise<boolean>
-    listByUserId(userId: bigint, limit?: number): Promise<UserOnlineRow[]>
+    listByUserId(userId: UserId, limit?: number): Promise<UserOnlineRow[]>
     listHistory(filters?: UserOnlineHistoryFilters): Promise<UserOnlineRow[]>
     countHistory(filters?: Omit<UserOnlineHistoryFilters, 'cursor' | 'limit'>): Promise<number>
 }

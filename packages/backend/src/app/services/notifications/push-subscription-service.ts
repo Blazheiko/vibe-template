@@ -20,9 +20,10 @@ import { canonicalPushEndpoint } from './push-endpoint-policy.js'
 import type { DbTransaction } from '#app/repositories/index.js'
 import { getPushSubscriptionStatistics } from '#app/services/statistics/push-subscription-statistics-service.js'
 import { withCurrentSession } from '#app/services/auth/session-guard.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export const pushSubscriptionService = {
-    async getSubscriptions(userId: bigint): Promise<
+    async getSubscriptions(userId: UserId): Promise<
         AppResult<{
             subscriptions: ReturnType<typeof pushSubscriptionTransformer.serializeArrayWithLogs>
         }>
@@ -39,7 +40,7 @@ export const pushSubscriptionService = {
      * current, so a request admitted before a claim cannot add a device after it.
      */
     async createSubscription(
-        userId: bigint,
+        userId: UserId,
         payload: CreateSubscriptionInput,
         presentedSessionToken: string | undefined,
         /**
@@ -59,7 +60,7 @@ export const pushSubscriptionService = {
     },
 
     async getSubscription(
-        userId: bigint,
+        userId: UserId,
         subscriptionId: bigint,
     ): Promise<
         AppResult<{
@@ -85,7 +86,7 @@ export const pushSubscriptionService = {
 
     /** feat-098: like `createSubscription`, only while the request's session is current. */
     async updateSubscription(
-        userId: bigint,
+        userId: UserId,
         subscriptionId: bigint,
         payload: UpdateSubscriptionInput,
         presentedSessionToken: string | undefined,
@@ -121,7 +122,7 @@ export const pushSubscriptionService = {
     },
 
     async deleteSubscription(
-        userId: bigint,
+        userId: UserId,
         subscriptionId: bigint,
     ): Promise<AppResult<{ message: string }>> {
         const deleted = await pushSubscriptionRepository.delete(subscriptionId, userId)
@@ -138,7 +139,7 @@ export const pushSubscriptionService = {
      * account (it moved there on an account switch) stays. Answers whether a record was removed;
      * an endpoint the policy does not allow matches none.
      */
-    async deleteOwnSubscriptionByEndpoint(userId: bigint, endpoint: string): Promise<boolean> {
+    async deleteOwnSubscriptionByEndpoint(userId: UserId, endpoint: string): Promise<boolean> {
         const canonical = canonicalPushEndpoint(endpoint)
         if (canonical === null) return false
         const record = await pushSubscriptionRepository.findByEndpoint(canonical)
@@ -148,7 +149,7 @@ export const pushSubscriptionService = {
     },
 
     async getSubscriptionLogs(
-        userId: bigint,
+        userId: UserId,
         subscriptionId: bigint,
     ): Promise<
         AppResult<{
@@ -165,7 +166,7 @@ export const pushSubscriptionService = {
     },
 
     async getSubscriptionStatistics(
-        userId: bigint,
+        userId: UserId,
         subscriptionId: bigint,
     ): Promise<
         AppResult<{
@@ -181,7 +182,7 @@ export const pushSubscriptionService = {
     },
 
     async deactivateSubscription(
-        userId: bigint,
+        userId: UserId,
         subscriptionId: bigint,
     ): Promise<
         AppResult<{
@@ -206,7 +207,7 @@ const storableIp = (ip: string | null | undefined): string | null =>
     typeof ip === 'string' && ip !== '' && ip.length <= IP_COLUMN_LENGTH ? ip : null
 
 async function upsertSubscription(
-    userId: bigint,
+    userId: UserId,
     payload: CreateSubscriptionInput,
     ipAddress: string | null,
     tx: DbTransaction,
@@ -299,7 +300,7 @@ async function upsertSubscription(
 // Counted under the user's row lock that withCurrentSession holds, so two requests cannot both
 // pass with one slot left.
 async function subscriptionLimitReached(
-    userId: bigint,
+    userId: UserId,
     tx: DbTransaction,
 ): Promise<AppResult<never> | undefined> {
     const total = await pushSubscriptionRepository.countByUserId(userId, tx)

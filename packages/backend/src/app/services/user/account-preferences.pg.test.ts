@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import type { UserId } from '#app/domain/ids.js'
+import { uid } from '../../../test-support/ids.js'
 
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,9 +30,9 @@ describe.skipIf(!hasPg)('user_preferences on PostgreSQL', async () => {
     const { userPreferencesRepository, withTransaction } =
         await import('#app/repositories/index.js')
 
-    let userId = 0n
+    let userId = uid(0)
 
-    const createUser = async (): Promise<bigint> => {
+    const createUser = async (): Promise<UserId> => {
         const [user] = await db
             .insert(schema.users)
             .values({ name: 'prefs', email: `prefs-${randomUUID()}@x.test` })

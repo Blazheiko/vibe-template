@@ -1,4 +1,5 @@
 import { userRepository } from '#app/repositories/index.js'
+import { toEntityId } from '#app/domain/ids.js'
 import type { AdminUserListFilters } from '#app/repositories/index.js'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
 import type { Role } from 'shared/access'
@@ -32,7 +33,7 @@ export const adminUserService = {
         const lastRow = pageRows.at(-1)
         return {
             items: pageRows.map((user) => ({
-                id: String(user.id),
+                id: toEntityId(user.id),
                 name: user.name,
                 email: user.email ?? '',
                 registeredAt: user.createdAt.toISOString(),

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
@@ -373,7 +374,7 @@ describe('authService legacy regressions', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.changePassword(
-            7n,
+            uid(7),
             { newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
@@ -410,7 +411,7 @@ describe('authService legacy regressions', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.changePassword(
-            9n,
+            uid(9),
             { newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
@@ -449,7 +450,7 @@ describe('authService legacy regressions', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.changePassword(
-            9n,
+            uid(9),
             { newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,

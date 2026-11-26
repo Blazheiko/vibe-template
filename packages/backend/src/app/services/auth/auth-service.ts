@@ -39,6 +39,7 @@ import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-
 import { enforceEmailLinkThrottles, enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { retirePendingResets } from '#app/services/auth/phone-challenges.js'
 import {
+    findSmsChallenge,
     confirmChallenge,
     findPendingChallenge,
     issueSmsChallenge,
@@ -80,6 +81,7 @@ import {
     startSecondStepIfRequired,
     type SecondStepRequired,
 } from '#app/services/auth/mfa/mfa-sign-in.js'
+import { toEntityId, asUserId, type UserId, type SmsChallengeId } from '#app/domain/ids.js'
 
 interface GenericAcceptedPayload {
     status: 'success'
@@ -178,7 +180,7 @@ async function requireSessionStored(sessionStored: SessionStillStored): Promise<
  * proof that let it through (Р14).
  */
 async function requireStepUp(
-    userId: bigint,
+    userId: UserId,
     presentedSessionToken: string | undefined,
     sessionAuth: SessionAuthState | undefined,
     action: 'password.change' | 'contact.link',
@@ -202,7 +204,7 @@ async function buildAuthSuccess(
     origin: LoginOrigin,
     loginFailureMessage = 'Failed to log in user',
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const loggedInResult = await auth.login(String(user.id), user.sessionToken, origin)
+    const loggedInResult = await auth.login(toEntityId(user.id), user.sessionToken, origin)
 
     if (loggedInResult === null) {
         return Result.err(internalMessage(loginFailureMessage))
@@ -220,7 +222,7 @@ async function persistRegisteredUser(
     },
     options: {
         sendEmailVerification: boolean
-        challengeIdToInvalidate?: string
+        challengeIdToInvalidate?: SmsChallengeId
     },
 ): Promise<AppResult<Awaited<ReturnType<typeof userRepository.create>>>> {
     let userCreated: Awaited<ReturnType<typeof userRepository.create>>
@@ -265,13 +267,13 @@ async function finalizeRegistration(
     session: Session,
     options: {
         sendEmailVerification: boolean
-        challengeIdToInvalidate?: string
+        challengeIdToInvalidate?: SmsChallengeId
         loginFailureMessage?: string
     },
 ): Promise<AppResult<AuthSuccessPayload>> {
     const persistOptions: {
         sendEmailVerification: boolean
-        challengeIdToInvalidate?: string
+        challengeIdToInvalidate?: SmsChallengeId
     } = {
         sendEmailVerification: options.sendEmailVerification,
     }
@@ -300,7 +302,7 @@ async function finalizeRegistration(
  * account. Nothing here may change the answer of the login or delay it, and a failure (Redis
  * down, no mail transport) is only logged.
  */
-async function resendVerificationAfterUnverifiedLogin(userId: bigint): Promise<void> {
+async function resendVerificationAfterUnverifiedLogin(userId: UserId): Promise<void> {
     try {
         const throttle = await consumeAuthThrottle(
             throttlePolicies.loginUnverifiedResend,
@@ -423,7 +425,7 @@ async function registerEmailFlow(
  * push work there would hold the user's row lock longer and tie the logout to the push table.
  * Best effort: a failure is logged and the logout still answers success (the session is gone).
  */
-async function releasePushRecord(userId: bigint, pushEndpoint: string): Promise<void> {
+async function releasePushRecord(userId: UserId, pushEndpoint: string): Promise<void> {
     try {
         await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(userId, pushEndpoint)
     } catch (err) {
@@ -541,7 +543,7 @@ export const authService = {
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
-        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
+        const challenge = await findSmsChallenge(payload.challengeId)
         if (challenge?.flow !== REGISTER_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone registration challenge not found'))
         }
@@ -587,7 +589,7 @@ export const authService = {
             return gateResult
         }
 
-        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
+        const challenge = await findSmsChallenge(payload.challengeId)
         if (challenge?.flow !== REGISTER_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone registration challenge not found'))
         }
@@ -644,7 +646,7 @@ export const authService = {
     },
 
     async startPhoneLink(
-        userId: bigint,
+        userId: UserId,
         payload: LinkPhoneStartInput,
         requestMeta: {
             ipAddress: string
@@ -756,7 +758,7 @@ export const authService = {
     },
 
     async confirmPhoneLink(
-        userId: bigint,
+        userId: UserId,
         payload: LinkPhoneConfirmInput,
         requestMeta: {
             ipAddress: string
@@ -788,7 +790,7 @@ export const authService = {
             return Result.err(ipThrottle.error)
         }
 
-        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
+        const challenge = await findSmsChallenge(payload.challengeId)
         if (challenge?.flow !== LINK_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone linking challenge not found'))
         }
@@ -916,7 +918,7 @@ export const authService = {
     },
 
     async startEmailLink(
-        userId: bigint,
+        userId: UserId,
         payload: LinkEmailStartInput,
         presentedSessionToken: string | undefined,
         sessionStored: SessionStillStored,
@@ -1097,7 +1099,7 @@ export const authService = {
             return Result.err(internalMessage('Failed to log out user'))
         }
         if (signedInUserId !== null && options.pushEndpoint !== undefined) {
-            await releasePushRecord(BigInt(signedInUserId), options.pushEndpoint)
+            await releasePushRecord(asUserId(signedInUserId), options.pushEndpoint)
         }
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
@@ -1173,7 +1175,7 @@ export const authService = {
                     ? undefined
                     : await withTransaction(async (tx) => {
                           const done = await userRepository.updateIfSessionToken(
-                              BigInt(userId),
+                              asUserId(userId),
                               presented,
                               { sessionToken: nanoid() },
                               tx,
@@ -1201,7 +1203,7 @@ export const authService = {
                           return { done, events }
                       })
             if (rotated === undefined) {
-                const current = await userRepository.findSessionToken(BigInt(userId))
+                const current = await userRepository.findSessionToken(asUserId(userId))
                 return Result.err(
                     current === undefined ? notFound('User', 'User not found') : sessionRevoked(),
                 )
@@ -1227,7 +1229,7 @@ export const authService = {
             // from the logger transport.
             logger.error({ err, userId }, 'Logout-all: deleting the session records failed')
         }
-        if (userId !== null) userNotificationService.security(BigInt(userId), 'logout_all')
+        if (userId !== null) userNotificationService.security(asUserId(userId), 'logout_all')
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
         if (csrfToken === undefined) {
@@ -1242,7 +1244,7 @@ export const authService = {
     },
 
     async changePassword(
-        userId: bigint,
+        userId: UserId,
         payload: ChangePasswordInput,
         presentedSessionToken: string | undefined,
         /**

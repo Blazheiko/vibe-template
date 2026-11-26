@@ -17,6 +17,7 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import { AVATAR_MAX_FILE_BYTES } from '#app/services/shared/upload-limits.js'
+import { toEntityId, type UserId } from '#app/domain/ids.js'
 
 const ALLOWED_TYPES: ReadonlySet<DetectedImageType> = new Set([
     'image/jpeg',
@@ -46,7 +47,7 @@ function serializeUser(user: {
     avatar: string | null | undefined
 }): AvatarUserPayload {
     return {
-        id: String(user.id),
+        id: toEntityId(user.id),
         name: user.name,
         email: user.email ?? '',
         avatar: user.avatar ?? null,
@@ -72,7 +73,7 @@ export const avatarService = {
      * is still the user's current sessionToken (feat-096).
      */
     async uploadAvatar(
-        userId: bigint,
+        userId: UserId,
         file: UploadedFile | undefined,
         presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ user: AvatarUserPayload }>> {
@@ -140,7 +141,7 @@ export const avatarService = {
     },
 
     async deleteAvatar(
-        userId: bigint,
+        userId: UserId,
         presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ user: AvatarUserPayload }>> {
         const user = await userRepository.findById(userId)

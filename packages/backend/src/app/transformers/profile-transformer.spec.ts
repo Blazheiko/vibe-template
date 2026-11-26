@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { uid } from '../../test-support/ids.js'
 
 import { profileTransformer } from './profile-transformer.js'
 
 const row = (fields: Record<string, unknown> = {}) =>
     ({
-        userId: 7n,
+        userId: uid(7),
         locale: 'uk',
         timeZone: 'Europe/Kiev',
         theme: 'dark',

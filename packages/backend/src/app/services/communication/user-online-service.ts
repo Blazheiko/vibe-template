@@ -1,9 +1,10 @@
 import { userOnlineRepository } from '#app/repositories/index.js'
 import type { UserOnlineInsert } from '#app/repositories/index.js'
 import logger from '#vendor/utils/logger.js'
+import type { UserId } from '#app/domain/ids.js'
 
 interface TrackConnectedInput {
-    userId: bigint
+    userId: UserId
     sessionId: string
     socketUuid: string
     role: UserOnlineInsert['role']

@@ -10,6 +10,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-236 T5 (Р4, Р6): the notification center over HTTP — a real uWebSockets.js server with the
 // real route table and the real session_web, csrf_guard and auth_guard, against a real PostgreSQL
@@ -113,7 +114,7 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
     const PASSWORD = 'notification-secret-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 
     const insertUser = async (name: string) => {
@@ -225,7 +226,7 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
         await pool.end()
     })
 
-    const add = async (userId: bigint, link: string | null = '/account'): Promise<bigint> => {
+    const add = async (userId: UserId, link: string | null = '/account'): Promise<bigint> => {
         const [row] = await db
             .insert(notifications)
             .values({ userId, category: 'security', kind: 'security.logout_all', params: {}, link })

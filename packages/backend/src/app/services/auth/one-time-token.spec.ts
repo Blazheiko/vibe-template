@@ -1,7 +1,9 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserRow } from '#app/repositories/index.js'
 import { badRequest, conflict } from '#app/services/shared/errors.js'
+import type { OneTimeTokenRowId, UserId } from '#app/domain/ids.js'
 
 // feat-073 (H4): the part the three token flows share. What each flow does with a token is in
 // their own specs and, against a real PostgreSQL, in one-time-token-race.pg.test.ts.
@@ -64,7 +66,7 @@ describe('issueTokenLocked', () => {
         const { issueTokenLocked, hashToken } = await load()
 
         const result = await issueTokenLocked(repository, {
-            userId: 7n,
+            userId: uid(7),
             ttlMs: 60_000,
             extra: { targetEmail: 'new@example.com' },
         })
@@ -79,13 +81,13 @@ describe('issueTokenLocked', () => {
         expect(repository.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
         expect(repository.create).toHaveBeenCalledWith(expect.anything(), TX)
         const stored = repository.create.mock.calls[0]![0] as {
-            userId: bigint
+            userId: UserId
             tokenHash: string
             targetEmail: string
             expiresAt: Date
         }
         expect(stored).toMatchObject({
-            userId: 7n,
+            userId: uid(7),
             targetEmail: 'new@example.com',
             tokenHash: hashToken(secret),
         })
@@ -107,7 +109,7 @@ describe('issueTokenLocked', () => {
         const check = vi.fn().mockReturnValue(Result.ok(undefined))
         const { issueTokenLocked } = await load()
 
-        const result = await issueTokenLocked(repository, { userId: 7n, ttlMs: 1, check })
+        const result = await issueTokenLocked(repository, { userId: uid(7), ttlMs: 1, check })
 
         expect(Result.isOk(result)).toBe(true)
         expect(check).toHaveBeenCalledWith(user)
@@ -125,7 +127,7 @@ describe('issueTokenLocked', () => {
         const { issueTokenLocked } = await load()
 
         const result = await issueTokenLocked(repository, {
-            userId: 7n,
+            userId: uid(7),
             ttlMs: 1,
             check: () => Result.err(refusal),
         })
@@ -140,7 +142,7 @@ describe('issueTokenLocked', () => {
         const check = vi.fn()
         const { issueTokenLocked } = await load()
 
-        const result = await issueTokenLocked(repository, { userId: 7n, ttlMs: 1, check })
+        const result = await issueTokenLocked(repository, { userId: uid(7), ttlMs: 1, check })
 
         expect(Result.isError(result) && result.error).toMatchObject({ _tag: 'NotFound' })
         expect(check).not.toHaveBeenCalled()
@@ -154,7 +156,9 @@ describe('issueTokenLocked', () => {
         lockById.mockResolvedValue(lockedUser())
         repository.invalidatePendingByUserId.mockRejectedValue(dbError)
         const { issueTokenLocked } = await load()
-        await expect(issueTokenLocked(repository, { userId: 7n, ttlMs: 1 })).rejects.toBe(dbError)
+        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: 1 })).rejects.toBe(
+            dbError,
+        )
         expect(repository.create).not.toHaveBeenCalled()
     })
 
@@ -164,14 +168,18 @@ describe('issueTokenLocked', () => {
         repository.invalidatePendingByUserId.mockResolvedValue(0)
         repository.create.mockRejectedValue(dbError)
         const { issueTokenLocked } = await load()
-        await expect(issueTokenLocked(repository, { userId: 7n, ttlMs: 1 })).rejects.toBe(dbError)
+        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: 1 })).rejects.toBe(
+            dbError,
+        )
     })
 
     it('rejects when the lock fails, and touches no token', async () => {
         const dbError = new Error('lock')
         lockById.mockRejectedValue(dbError)
         const { issueTokenLocked } = await load()
-        await expect(issueTokenLocked(repository, { userId: 7n, ttlMs: 1 })).rejects.toBe(dbError)
+        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: 1 })).rejects.toBe(
+            dbError,
+        )
         expect(repository.invalidatePendingByUserId).not.toHaveBeenCalled()
         expect(repository.create).not.toHaveBeenCalled()
     })
@@ -184,7 +192,7 @@ describe('findUsableToken', () => {
     }
     const row = (over: Record<string, unknown> = {}) => ({
         id: 11n,
-        userId: 7n,
+        userId: uid(7),
         usedAt: null,
         expiresAt: new Date(Date.now() + 60_000),
         ...over,
@@ -240,8 +248,8 @@ describe('findUsableToken', () => {
 
 describe('runTokenTransaction', () => {
     const token = (over: Record<string, unknown> = {}) => ({
-        id: 11n,
-        userId: 7n,
+        id: 11n as OneTimeTokenRowId,
+        userId: uid(7),
         usedAt: null,
         expiresAt: new Date(Date.now() + 60_000),
         ...over,

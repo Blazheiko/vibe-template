@@ -42,6 +42,7 @@ import {
 } from '#app/services/notifications/email-templates.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
+import type { UserId } from '#app/domain/ids.js'
 
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
 function buildVerificationUrl(token: string): string {
@@ -143,7 +144,7 @@ function tokenOutcomeError(
 }
 
 export const emailVerificationService = {
-    async sendVerificationEmail(userId: bigint): Promise<AppResult<{ message: string }>> {
+    async sendVerificationEmail(userId: UserId): Promise<AppResult<{ message: string }>> {
         const ALREADY_VERIFIED = 'already_verified'
         const issued = await issueTokenLocked(emailVerificationRepository, {
             userId,
@@ -198,7 +199,7 @@ export const emailVerificationService = {
         token: string,
         requestMeta: { ipAddress: string },
         requester: {
-            userId: bigint | null
+            userId: UserId | null
             presentedSessionToken: string | undefined
             password?: string
         },
@@ -377,7 +378,7 @@ export const emailVerificationService = {
     },
 
     async queueVerificationEmail(
-        userId: bigint,
+        userId: UserId,
         /**
          * feat-129: checked right before the mail is queued; a logout in another tab deletes this
          * session's record without rotating users.session_token.
@@ -420,7 +421,7 @@ export const emailVerificationService = {
     },
 
     async sendVerificationEmailInBackground(
-        userId: bigint,
+        userId: UserId,
         reason: 'registration' | 'manual resend' | 'unverified login',
     ): Promise<void> {
         try {
@@ -443,7 +444,7 @@ export const emailVerificationService = {
         }
     },
 
-    async sendVerificationEmailAfterRegistration(userId: bigint): Promise<void> {
+    async sendVerificationEmailAfterRegistration(userId: UserId): Promise<void> {
         await this.sendVerificationEmailInBackground(userId, 'registration')
     },
 
@@ -452,7 +453,7 @@ export const emailVerificationService = {
      * The link is issued only while it is still the user's current one (feat-096).
      */
     async sendLinkVerificationEmail(
-        userId: bigint,
+        userId: UserId,
         targetEmail: string,
         presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ message: string }>> {

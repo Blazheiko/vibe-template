@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import { uid } from '../../../test-support/ids.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -61,7 +62,7 @@ describe.skipIf(!hasPg)('prompt edits in the audit log', async () => {
     })
 
     it('records one event with the changed fields and the text as a hash and a length', async () => {
-        const actor = testAdminActor(7n)
+        const actor = testAdminActor(uid(7))
         const revisionBefore = (await stored()).revision
         expect(
             await promptService.update(type, { content: 'secret new text', model: 'm2' }, actor),
@@ -75,7 +76,7 @@ describe.skipIf(!hasPg)('prompt edits in the audit log', async () => {
         const [event] = events
         expect(event).toMatchObject({
             actorKind: 'user',
-            actorUserId: 7n,
+            actorUserId: uid(7),
             actorRole: 'admin',
             action: 'ai.prompt.updated',
             targetType: 'llm_prompt',
@@ -158,8 +159,8 @@ describe.skipIf(!hasPg)('prompt edits in the audit log', async () => {
             await new Promise((resolve) => setTimeout(resolve, 50))
             return row
         })
-        const first = testAdminActor(1n)
-        const second = testAdminActor(2n)
+        const first = testAdminActor(uid(1))
+        const second = testAdminActor(uid(2))
 
         const a = promptService.update(type, { model: 'from-first' }, first)
         await new Promise((resolve) => setTimeout(resolve, 10))

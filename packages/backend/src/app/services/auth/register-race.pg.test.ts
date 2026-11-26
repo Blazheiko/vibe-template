@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { testUserActor } from '../../../test-support/audit-actor.js'
+import type { SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -66,7 +67,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
     }
     const emails: string[] = []
     const phones: string[] = []
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let counter = 0
 
     const nextEmail = (): string => {
@@ -114,7 +115,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
         if (row === undefined) throw new Error('challenge not inserted')
         return row
     }
-    const challengeRow = async (id: string) => {
+    const challengeRow = async (id: SmsChallengeId) => {
         const [row] = await db.select().from(smsAuthChallenges).where(eq(smsAuthChallenges.id, id))
         return row
     }

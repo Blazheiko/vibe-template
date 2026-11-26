@@ -26,12 +26,13 @@ import { loadMfaAccount, loadMfaFactors } from '#app/services/auth/mfa/mfa-accou
 import { recheckPrivilegedActor } from '#app/services/auth/mfa/privileged-actor.js'
 import { requireProof } from '#app/services/auth/mfa/require-proof.js'
 import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
+import type { UserId } from '#app/domain/ids.js'
 
 /** A role change by an admin (HTTP, feat-241) or by the user:set-role CLI (feat-240). */
 export type RoleAssignmentActor = UserAuditActor | SystemAuditActor
 
 export interface RoleAssignment {
-    userId: bigint
+    userId: UserId
     role: Role
     /** False when the user already had the role: nothing was written. */
     changed: boolean
@@ -56,7 +57,7 @@ const denied = (): AppError => forbidden('Access denied')
 export const roleAssignmentService = {
     async assign(input: {
         actor: RoleAssignmentActor
-        targetUserId: bigint
+        targetUserId: UserId
         role: Role
         /**
          * feat-247 (row 9 of Р3): the auth state of the session of a user actor. A role change

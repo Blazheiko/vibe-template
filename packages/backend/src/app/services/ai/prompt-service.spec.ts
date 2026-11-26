@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 // Prompt cache with a TTL (code-issues item 43): a stale read returns the cached
 // value at once and refreshes in the background; update() on this instance is
@@ -26,7 +27,7 @@ vi.mock('#app/services/audit/audit-service.js', () => ({
         logCommitted: vi.fn(),
     },
 }))
-const actor = { kind: 'user', userId: 1n, logger: { info: vi.fn() } } as never
+const actor = { kind: 'user', userId: uid(1), logger: { info: vi.fn() } } as never
 vi.mock('#config/ai.js', () => ({ default: { promptCacheTtlMs: 60_000 } }))
 const warn = vi.fn()
 vi.mock('#logger', () => ({ default: { info: vi.fn(), warn, error: vi.fn() } }))

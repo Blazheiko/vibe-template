@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 import {
@@ -240,7 +241,7 @@ const ROWS: readonly Row[] = [
         method: 'startPhoneLink · ip',
         call: (s) =>
             s.startPhoneLink(
-                7n,
+                uid(7),
                 { phone: PHONE },
                 {
                     ...IP,
@@ -257,7 +258,7 @@ const ROWS: readonly Row[] = [
         method: 'startPhoneLink · user',
         call: (s) =>
             s.startPhoneLink(
-                7n,
+                uid(7),
                 { phone: PHONE },
                 {
                     ...IP,
@@ -277,7 +278,7 @@ const ROWS: readonly Row[] = [
         method: 'startPhoneLink · phone',
         call: (s) =>
             s.startPhoneLink(
-                7n,
+                uid(7),
                 { phone: PHONE },
                 {
                     ...IP,
@@ -299,7 +300,7 @@ const ROWS: readonly Row[] = [
         method: 'confirmPhoneLink · ip',
         call: (s) =>
             s.confirmPhoneLink(
-                7n,
+                uid(7),
                 { challengeId: 'c', code: '123456' },
                 {
                     ...IP,
@@ -316,7 +317,7 @@ const ROWS: readonly Row[] = [
         method: 'startEmailLink · target',
         call: (s) =>
             s.startEmailLink(
-                7n,
+                uid(7),
                 { email: ' New@Example.com ' },
                 TOKEN,
                 sessionStillStored,
@@ -329,7 +330,7 @@ const ROWS: readonly Row[] = [
         method: 'startEmailLink · user',
         call: (s) =>
             s.startEmailLink(
-                7n,
+                uid(7),
                 { email: ' New@Example.com ' },
                 TOKEN,
                 sessionStillStored,
@@ -345,7 +346,7 @@ const ROWS: readonly Row[] = [
         method: 'startEmailLink · cooldown',
         call: (s) =>
             s.startEmailLink(
-                7n,
+                uid(7),
                 { email: ' New@Example.com ' },
                 TOKEN,
                 sessionStillStored,

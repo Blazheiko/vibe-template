@@ -19,6 +19,7 @@ import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import {
+    findSmsChallenge,
     confirmChallenge,
     deliverChallenge,
     findPendingChallenge,
@@ -64,6 +65,7 @@ import { maskEmailForLogs, maskPhoneForLogs } from '#vendor/utils/helpers/mask-s
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import { announcePasswordReset } from '#app/services/auth/password-reset-notice.js'
 import { PRODUCT } from 'shared/product'
+import type { UserId } from '#app/domain/ids.js'
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 export const GENERIC_RESET_MESSAGE =
@@ -152,7 +154,7 @@ export const passwordResetService = {
         return Result.ok({ message: GENERIC_RESET_MESSAGE })
     },
 
-    async sendPasswordResetEmail(userId: bigint): Promise<AppResult<{ message: string }>> {
+    async sendPasswordResetEmail(userId: UserId): Promise<AppResult<{ message: string }>> {
         const NO_EMAIL = 'no_email'
         // feat-096: issued under the user lock; an account without an address gets no token.
         const issued = await issueTokenLocked(passwordResetRepository, {
@@ -487,7 +489,7 @@ export const passwordResetService = {
 
         // Intentional: phone reset completion is not bound to the current browser session.
         // Users may request the SMS on one device and complete the reset from another.
-        const challenge = await smsAuthChallengeRepository.findById(challengeId)
+        const challenge = await findSmsChallenge(challengeId)
         if (challenge?.flow !== RESET_PHONE_FLOW) {
             return Result.err(badRequest('Phone reset challenge is invalid'))
         }
@@ -602,7 +604,7 @@ export const passwordResetService = {
     },
 
     async sendPasswordResetEmailInBackground(
-        userId: bigint,
+        userId: UserId,
         reason: 'manual request',
     ): Promise<void> {
         try {

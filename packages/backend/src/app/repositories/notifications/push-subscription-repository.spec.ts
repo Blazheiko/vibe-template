@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 // feat-058 (phase A): update() and deactivate() answer from their own owner-scoped UPDATE.
 // When the WHERE (id AND user_id) matches nothing there is no row to return, and nothing may be
@@ -27,7 +28,7 @@ describe('pushSubscriptionRepository.update', () => {
         returning.mockResolvedValue([])
 
         await expect(
-            pushSubscriptionRepository.update(1n, 2n, { isActive: false }),
+            pushSubscriptionRepository.update(1n, uid(2), { isActive: false }),
         ).resolves.toBeUndefined()
 
         expect(update).toHaveBeenCalledTimes(1)
@@ -35,18 +36,18 @@ describe('pushSubscriptionRepository.update', () => {
     })
 
     it('is the row that the UPDATE returned', async () => {
-        const row = { id: 1n, userId: 2n, isActive: false }
+        const row = { id: 1n, userId: uid(2), isActive: false }
         returning.mockResolvedValue([row])
 
-        await expect(pushSubscriptionRepository.update(1n, 2n, { isActive: false })).resolves.toBe(
-            row,
-        )
+        await expect(
+            pushSubscriptionRepository.update(1n, uid(2), { isActive: false }),
+        ).resolves.toBe(row)
     })
 
     it('stamps updatedAt and lastUsedAt together with the changed fields', async () => {
         returning.mockResolvedValue([])
 
-        await pushSubscriptionRepository.update(1n, 2n, { timezone: 'Europe/Kyiv' })
+        await pushSubscriptionRepository.update(1n, uid(2), { timezone: 'Europe/Kyiv' })
 
         const changes = (set.mock.calls[0] as unknown[])[0] as Record<string, unknown>
         expect(changes['timezone']).toBe('Europe/Kyiv')
@@ -59,16 +60,16 @@ describe('pushSubscriptionRepository.deactivate', () => {
     it('is undefined when the owner-scoped UPDATE matched no row, and reads nothing back', async () => {
         returning.mockResolvedValue([])
 
-        await expect(pushSubscriptionRepository.deactivate(1n, 2n)).resolves.toBeUndefined()
+        await expect(pushSubscriptionRepository.deactivate(1n, uid(2))).resolves.toBeUndefined()
 
         expect(update).toHaveBeenCalledTimes(1)
     })
 
     it('is the row that the UPDATE returned, now inactive', async () => {
-        const row = { id: 1n, userId: 2n, isActive: false }
+        const row = { id: 1n, userId: uid(2), isActive: false }
         returning.mockResolvedValue([row])
 
-        await expect(pushSubscriptionRepository.deactivate(1n, 2n)).resolves.toBe(row)
+        await expect(pushSubscriptionRepository.deactivate(1n, uid(2))).resolves.toBe(row)
         expect((set.mock.calls[0] as unknown[])[0]).toMatchObject({ isActive: false })
     })
 })

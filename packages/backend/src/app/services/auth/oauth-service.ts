@@ -65,6 +65,7 @@ import { notifySignInMethodAdded } from '#app/services/auth/sign-in-method-notic
 import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
 import { providerTitle } from '#app/services/auth/oauth-provider-titles.js'
 import { PRODUCT } from 'shared/product'
+import { toEntityId, type UserId } from '#app/domain/ids.js'
 
 type JsonObject = Record<string, unknown>
 
@@ -657,7 +658,7 @@ export const oauthService = {
         }
         // The link is committed: announced whatever the sign-in below answers.
         announceLink(verification.userId, linked, verification.provider, verification.providerName)
-        const loggedIn = await auth.login(String(verification.userId), linked.sessionToken, {
+        const loggedIn = await auth.login(toEntityId(verification.userId), linked.sessionToken, {
             method: 'oauth',
             provider: verification.provider,
         })
@@ -670,7 +671,7 @@ export const oauthService = {
      * The address is the one an OAuth provider showed for this account; nothing is typed.
      */
     async resendFirstEmailLink(
-        userId: bigint,
+        userId: UserId,
         presentedSessionToken: string | undefined,
         /** feat-123: checked right before the mail (a logout in another tab deletes the record). */
         sessionStored: () => Promise<boolean>,
@@ -719,7 +720,7 @@ interface ClaimedLink {
 // method. A claim is not: there the mailbox owner takes the account, and everything set up
 // before goes away (account_claimed).
 const announceLink = (
-    userId: bigint,
+    userId: UserId,
     linked: ClaimedLink,
     provider: string,
     providerName: string | null,
@@ -753,7 +754,7 @@ type SignInNotice = 'full' | 'push' | 'none'
 
 async function finishSignIn(
     auth: Auth,
-    userId: bigint,
+    userId: UserId,
     sessionToken: string,
     provider: string,
     notice: SignInNotice,
@@ -771,7 +772,7 @@ async function finishSignIn(
         return Result.ok({ redirectUrl: secondStepUrl(second.value.methods) })
     }
 
-    const device = await auth.login(String(userId), sessionToken, { method: 'oauth', provider })
+    const device = await auth.login(toEntityId(userId), sessionToken, { method: 'oauth', provider })
     if (device === null) return Result.err(badRequest('Failed to sign in'))
     if (notice !== 'none') notifyNewSignIn(userId, device, { mail: notice === 'full' })
     return Result.ok({ redirectUrl: oauthConfig.frontendSuccessUrl })
@@ -784,7 +785,7 @@ async function finishSignIn(
  */
 async function linkTrusted(
     auth: Auth,
-    userId: bigint,
+    userId: UserId,
     identity: OAuthIdentity,
     request: AuditRequest,
 ): Promise<AppResult<{ redirectUrl: string }>> {
@@ -863,7 +864,7 @@ async function linkTrusted(
  * session, and only while the account still has that address.
  */
 async function startMailedLink(
-    userId: bigint,
+    userId: UserId,
     identity: OAuthIdentity,
     sessionId: string | null,
 ): Promise<AppResult<{ redirectUrl: string }>> {
@@ -1054,7 +1055,7 @@ async function signInWithIdentity(
 
 /** The first address of a new account goes out after sign-in; a failure only logs. */
 async function sendFirstEmailLinkQuietly(
-    userId: bigint,
+    userId: UserId,
     email: string,
     sessionToken: string,
 ): Promise<void> {

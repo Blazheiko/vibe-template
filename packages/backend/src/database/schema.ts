@@ -22,6 +22,16 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import { EMBEDDING_COLUMN_DIMENSIONS } from './embedding-dimensions.js'
+import type {
+    MfaRecoveryCodeId,
+    OAuthAccountId,
+    OneTimeTokenRowId,
+    PasskeyId,
+    SmsChallengeId,
+    TotpFactorId,
+    UserId,
+    UserOnlineId,
+} from './ids.js'
 import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
@@ -75,7 +85,7 @@ const vector1536 = customType<{ data: string | null; driverData: string | null }
 export const users = pgTable(
     'users',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<UserId>().primaryKey(),
         name: varchar('name', { length: 100 }).notNull(),
         email: varchar('email', { length: 255 }),
         emailVerifiedAt: timestamp('email_verified_at'),
@@ -123,6 +133,7 @@ export const userPreferences = pgTable(
     'user_preferences',
     {
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .primaryKey()
             .references(() => users.id, { onDelete: 'cascade' }),
         locale: varchar('locale', { length: 8 }),
@@ -150,8 +161,9 @@ export const userPreferences = pgTable(
 export const userOnline = pgTable(
     'user_online',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<UserOnlineId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         sessionId: varchar('session_id', { length: 255 }),
@@ -185,6 +197,7 @@ export const pushSubscriptions = pgTable(
     {
         id: bigserial('id', { mode: 'bigint' }).primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         endpoint: varchar('endpoint', { length: 500 }).notNull().unique(),
@@ -213,9 +226,11 @@ export const pushNotificationLogs = pgTable(
     'push_notifications_log',
     {
         id: bigserial('id', { mode: 'bigint' }).primaryKey(),
-        userId: bigint('user_id', { mode: 'bigint' }).references(() => users.id, {
-            onDelete: 'set null',
-        }),
+        userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
+            .references(() => users.id, {
+                onDelete: 'set null',
+            }),
         subscriptionId: bigint('subscription_id', { mode: 'bigint' }).references(
             () => pushSubscriptions.id,
             { onDelete: 'set null' },
@@ -242,6 +257,7 @@ export const notifications = pgTable(
     {
         id: bigserial('id', { mode: 'bigint' }).primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         category: varchar('category', { length: 32 }).notNull(),
@@ -274,6 +290,7 @@ export const notificationPreferences = pgTable(
     'notification_preferences',
     {
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         category: varchar('category', { length: 32 }).notNull(),
@@ -297,8 +314,9 @@ export const notificationPreferences = pgTable(
 export const emailVerifications = pgTable(
     'email_verifications',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         tokenHash: varchar('token_hash', { length: 64 }).notNull(),
@@ -316,8 +334,9 @@ export const emailVerifications = pgTable(
 export const emailLinkVerifications = pgTable(
     'email_link_verifications',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         targetEmail: varchar('target_email', { length: 255 }).notNull(),
@@ -336,8 +355,9 @@ export const emailLinkVerifications = pgTable(
 export const passwordResetTokens = pgTable(
     'password_reset_tokens',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         // The address the link was mailed to (feat-097): a reset that claims an unverified
@@ -359,6 +379,7 @@ export const smsAuthChallenges = pgTable(
     'sms_auth_challenges',
     {
         id: varchar('id', { length: 24 })
+            .$type<SmsChallengeId>()
             .primaryKey()
             .$defaultFn(() => nanoid()),
         flow: smsAuthChallengeFlowEnum('flow').notNull(),
@@ -386,8 +407,9 @@ export const smsAuthChallenges = pgTable(
 export const oauthAccounts = pgTable(
     'oauth_accounts',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OAuthAccountId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         provider: varchar('provider', { length: 50 }).notNull(),
@@ -419,8 +441,9 @@ export const oauthAccounts = pgTable(
 export const oauthLinkVerifications = pgTable(
     'oauth_link_verifications',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         provider: varchar('provider', { length: 50 }).notNull(),
@@ -471,9 +494,11 @@ export const llmTextUsage = pgTable(
         // deleted user: the usage log is an audit of tokens and cost, which outlives the account
         // (owner decision, feat-081). The row then has no link to a person; what is left of a
         // prompt is removed by `llm:purge-prompts` by age, user or not.
-        userId: bigint('user_id', { mode: 'bigint' }).references(() => users.id, {
-            onDelete: 'set null',
-        }),
+        userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
+            .references(() => users.id, {
+                onDelete: 'set null',
+            }),
         llmSystemPromptId: bigint('llm_system_prompt_id', { mode: 'bigint' }).references(
             () => llmSystemPrompts.id,
             { onDelete: 'set null' },
@@ -539,6 +564,7 @@ export const supportChatHistory = pgTable(
     {
         id: bigserial('id', { mode: 'bigint' }).primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         role: chatRoleEnum('role').notNull(),
@@ -572,12 +598,12 @@ export const auditEvents = pgTable(
         id: bigserial('id', { mode: 'bigint' }).primaryKey(),
         occurredAt: timestamp('occurred_at', { precision: 6 }).notNull(),
         actorKind: auditActorKindEnum('actor_kind').notNull(),
-        actorUserId: bigint('actor_user_id', { mode: 'bigint' }),
+        actorUserId: bigint('actor_user_id', { mode: 'bigint' }).$type<UserId>(),
         actorRole: userRoleEnum('actor_role'),
         action: varchar('action', { length: 64 }).notNull(),
         targetType: varchar('target_type', { length: 32 }).notNull(),
         targetId: varchar('target_id', { length: 64 }).notNull(),
-        targetUserId: bigint('target_user_id', { mode: 'bigint' }),
+        targetUserId: bigint('target_user_id', { mode: 'bigint' }).$type<UserId>(),
         requestId: uuid('request_id'),
         changes: jsonb('changes'),
         metadata: jsonb('metadata'),
@@ -625,8 +651,9 @@ export const auditEvents = pgTable(
 export const totpFactors = pgTable(
     'totp_factors',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<TotpFactorId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         enrollmentId: varchar('enrollment_id', { length: 32 }).notNull(),
@@ -648,8 +675,9 @@ export const totpFactors = pgTable(
 export const mfaRecoveryCodes = pgTable(
     'mfa_recovery_codes',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<MfaRecoveryCodeId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         codeHash: varchar('code_hash', { length: 64 }).notNull(),
@@ -671,8 +699,9 @@ export const mfaRecoveryCodes = pgTable(
 export const webauthnCredentials = pgTable(
     'webauthn_credentials',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<PasskeyId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         credentialId: bytea('credential_id').notNull(),

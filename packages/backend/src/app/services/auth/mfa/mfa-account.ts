@@ -7,12 +7,13 @@ import {
     webauthnCredentialRepository,
 } from '#app/repositories/index.js'
 import type { DbExecutor, TotpFactorRow } from '#app/repositories/index.js'
+import { type UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р1, Р12): what the MFA flows need to know about an
 // account, read from the database (inside the caller's transaction when it holds the row lock).
 
 export interface MfaUserFields {
-    id: bigint
+    id: UserId
     password: string | null
     email: string | null
     emailVerifiedAt: Date | null
@@ -20,7 +21,7 @@ export interface MfaUserFields {
 }
 
 export interface MfaAccount {
-    userId: bigint
+    userId: UserId
     hasPassword: boolean
     totp: TotpFactorRow | undefined
     /** The number of passkeys (feat-246). */
@@ -63,7 +64,7 @@ export async function loadMfaAccount(
 
 /** The second factors of a user, without the rest of the account (the sign-in gate, Р4). */
 export async function loadMfaFactors(
-    userId: bigint,
+    userId: UserId,
     executor?: DbExecutor,
 ): Promise<{ totp: TotpFactorRow | undefined; passkeys: number }> {
     const [totp, passkeys] = await Promise.all([

@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid'
 import { recoveryCodeRepository } from '#app/repositories/index.js'
 import type { DbExecutor } from '#app/repositories/index.js'
 import { hashOtpVerificationCode } from '#app/services/auth/otp-verification-hash.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р8): one-time recovery codes. 16 characters of the
 // Crockford base32 alphabet (80 bits), shown as xxxx-xxxx-xxxx-xxxx. Stored as HMAC-SHA256 with
@@ -49,7 +50,7 @@ export const hashRecoveryCode = (normalized: string): string =>
 
 export const recoveryCodes = {
     /** Voids every code of the user and stores a new batch, in `tx`; answers the codes to show once. */
-    async issue(userId: bigint, tx: DbExecutor): Promise<string[]> {
+    async issue(userId: UserId, tx: DbExecutor): Promise<string[]> {
         const codes = generateRecoveryCodes()
         const hashes = codes.map((code) => {
             const normalized = normalizeRecoveryCode(code)
@@ -61,18 +62,18 @@ export const recoveryCodes = {
     },
 
     /** Spends the code the user typed: true only for the request that marked it used. */
-    async consume(userId: bigint, input: string, executor?: DbExecutor): Promise<boolean> {
+    async consume(userId: UserId, input: string, executor?: DbExecutor): Promise<boolean> {
         const normalized = normalizeRecoveryCode(input)
         if (normalized === null) return false
         return recoveryCodeRepository.consume(userId, hashRecoveryCode(normalized), executor)
     },
 
-    remaining(userId: bigint, executor?: DbExecutor): Promise<number> {
+    remaining(userId: UserId, executor?: DbExecutor): Promise<number> {
         return recoveryCodeRepository.countUnused(userId, executor)
     },
 
     /** Removes every code of the user (MFA turned off, reset, claim). */
-    removeAll(userId: bigint, tx: DbExecutor): Promise<number> {
+    removeAll(userId: UserId, tx: DbExecutor): Promise<number> {
         return recoveryCodeRepository.deleteByUserId(userId, tx)
     },
 }

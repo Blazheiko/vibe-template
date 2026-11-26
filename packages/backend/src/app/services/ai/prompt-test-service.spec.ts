@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const adapter = { isConfigured: vi.fn(() => true), model: 'gpt-test', streamText: vi.fn() }
@@ -75,7 +76,7 @@ describe('promptTestService.run (code-issues item 23)', () => {
     it('records the call as PROMPT_TEST for the admin and the prompt (item 53)', async () => {
         adapter.streamText.mockImplementation(streamOf('ok'))
 
-        await promptTestService.run('s', 'u', undefined, { userId: 1n, llmSystemPromptId: 3n })
+        await promptTestService.run('s', 'u', undefined, { userId: uid(1), llmSystemPromptId: 3n })
 
         expect(textUsageRecorder).toHaveBeenCalledWith('PROMPT_TEST', 1n, 3n)
         expect(adapter.streamText.mock.calls[0]?.[1]).toBe(recorder)

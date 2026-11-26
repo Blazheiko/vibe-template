@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     appErrorCode,
@@ -8,6 +9,7 @@ import {
 } from '#app/services/shared/errors.js'
 import type { emailVerificationService } from './email-verification-service.js'
 import { testRequest } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -122,7 +124,7 @@ const user = (over: Record<string, unknown> = {}) => ({
 })
 const record = (over: Record<string, unknown> = {}) => ({
     id: 11n,
-    userId: 7n,
+    userId: uid(7),
     usedAt: null,
     expiresAt: FUTURE,
     ...over,
@@ -131,7 +133,7 @@ const linkRecord = (over: Record<string, unknown> = {}) =>
     record({ targetEmail: 'New@Example.com', ...over })
 
 /** feat-097: the link is opened from the current session of the account it belongs to. */
-const OWN_SESSION = { userId: 7n, presentedSessionToken: SESSION }
+const OWN_SESSION = { userId: uid(7), presentedSessionToken: SESSION }
 const verify =
     (token = 'tok') =>
     (s: Service) =>
@@ -161,14 +163,14 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendVerificationEmail · unknown user',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(undefined),
-        call: (s) => s.sendVerificationEmail(7n),
+        call: (s) => s.sendVerificationEmail(uid(7)),
         error: err(404, 'not_found', 'User not found'),
     },
     {
         name: 'sendVerificationEmail · already verified: nothing is made, nothing is sent',
         arrange: () =>
             userRepositoryMock.lockById.mockResolvedValue(user({ emailVerifiedAt: new Date() })),
-        call: (s) => s.sendVerificationEmail(7n),
+        call: (s) => s.sendVerificationEmail(uid(7)),
         ok: { message: 'Email is already verified' },
         after: () => {
             expect(verificationRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
@@ -182,7 +184,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user())
             verificationRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendVerificationEmail(7n),
+        call: (s) => s.sendVerificationEmail(uid(7)),
         throws: true,
         after: () => {
             expect(verificationRepositoryMock.create).not.toHaveBeenCalled()
@@ -194,7 +196,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user())
             verificationRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendVerificationEmail(7n),
+        call: (s) => s.sendVerificationEmail(uid(7)),
         throws: true,
         after: () => {
             expect(emailServiceMock.send).not.toHaveBeenCalled()
@@ -206,7 +208,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
         },
-        call: (s) => s.sendVerificationEmail(7n),
+        call: (s) => s.sendVerificationEmail(uid(7)),
         error: badRequest('Email verification requires an email address'),
         after: () => {
             expect(verificationRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
@@ -221,7 +223,7 @@ const ROWS: readonly Row[] = [
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
-        call: (s) => s.sendVerificationEmail(7n),
+        call: (s) => s.sendVerificationEmail(uid(7)),
         throws: true,
     },
     {
@@ -231,11 +233,11 @@ const ROWS: readonly Row[] = [
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.sendVerificationEmail(7n),
+        call: (s) => s.sendVerificationEmail(uid(7)),
         ok: { message: 'Verification email sent' },
         after: () => {
             const created = verificationRepositoryMock.create.mock.calls[0]![0] as {
-                userId: bigint
+                userId: UserId
                 tokenHash: string
                 expiresAt: Date
             }
@@ -268,7 +270,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendLinkVerificationEmail · unknown user',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(undefined),
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
         error: err(404, 'not_found', 'User not found'),
     },
     {
@@ -277,7 +279,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(
                 user({ email: null, sessionToken: 'session-rotated' }),
             ),
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
         error: err(401, 'unauthorized', 'Session has been revoked'),
         after: () => {
             expect(linkRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
@@ -288,7 +290,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendLinkVerificationEmail · no presented session token',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(user({ email: null })),
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', undefined),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', undefined),
         error: err(401, 'unauthorized', 'Session has been revoked'),
         after: () => {
             expect(linkRepositoryMock.create).not.toHaveBeenCalled()
@@ -298,7 +300,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendLinkVerificationEmail · the locked account already has an address',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(user()),
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
         error: badRequest('Email is already linked to this account'),
         after: () => {
             expect(linkRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
@@ -312,7 +314,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
         throws: true,
         after: () => {
             expect(linkRepositoryMock.create).not.toHaveBeenCalled()
@@ -324,7 +326,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
         throws: true,
     },
     {
@@ -334,7 +336,7 @@ const ROWS: readonly Row[] = [
             linkRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
         throws: true,
     },
     {
@@ -344,11 +346,11 @@ const ROWS: readonly Row[] = [
             linkRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        call: (s) => s.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION),
         ok: { message: 'Verification email will be sent shortly' },
         after: () => {
             expect(linkRepositoryMock.create).toHaveBeenCalledWith(
-                expect.objectContaining({ userId: 7n, targetEmail: 'new@example.com' }),
+                expect.objectContaining({ userId: uid(7), targetEmail: 'new@example.com' }),
                 TX,
             )
             expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
@@ -625,14 +627,14 @@ const ROWS: readonly Row[] = [
     {
         name: 'queueVerificationEmail · unknown user',
         arrange: () => userRepositoryMock.findById.mockResolvedValue(undefined),
-        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
+        call: (s) => s.queueVerificationEmail(uid(7), sessionStillStored),
         error: err(404, 'not_found', 'User not found'),
     },
     {
         name: 'queueVerificationEmail · already verified',
         arrange: () =>
             userRepositoryMock.findById.mockResolvedValue(user({ emailVerifiedAt: new Date() })),
-        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
+        call: (s) => s.queueVerificationEmail(uid(7), sessionStillStored),
         ok: { message: 'Email is already verified' },
         after: () => {
             expect(emailServiceMock.send).not.toHaveBeenCalled()
@@ -647,7 +649,7 @@ const ROWS: readonly Row[] = [
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
+        call: (s) => s.queueVerificationEmail(uid(7), sessionStillStored),
         ok: { message: 'Verification email will be sent shortly' },
         after: () => {
             expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
@@ -662,7 +664,7 @@ const ROWS: readonly Row[] = [
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.queueVerificationEmail(7n, () => Promise.resolve(false)),
+        call: (s) => s.queueVerificationEmail(uid(7), () => Promise.resolve(false)),
         error: err(401, 'unauthorized', 'Session has been revoked'),
         after: () => {
             expect(emailServiceMock.send).not.toHaveBeenCalled()
@@ -715,7 +717,7 @@ describe('emailVerificationService · the background senders', () => {
         userRepositoryMock.lockById.mockResolvedValue(undefined)
         const service = await load()
         await expect(
-            service.sendVerificationEmailInBackground(7n, 'manual resend'),
+            service.sendVerificationEmailInBackground(uid(7), 'manual resend'),
         ).resolves.toBeUndefined()
         expect(loggerMock.warn).toHaveBeenCalledWith(
             { userId: '7', reason: 'User not found', trigger: 'manual resend' },
@@ -728,7 +730,7 @@ describe('emailVerificationService · the background senders', () => {
         const service = await load()
         vi.spyOn(service, 'sendVerificationEmail').mockRejectedValue(boom)
         await expect(
-            service.sendVerificationEmailInBackground(7n, 'unverified login'),
+            service.sendVerificationEmailInBackground(uid(7), 'unverified login'),
         ).resolves.toBeUndefined()
         expect(loggerMock.error).toHaveBeenCalledWith(
             { err: boom, userId: '7', trigger: 'unverified login' },
@@ -739,7 +741,7 @@ describe('emailVerificationService · the background senders', () => {
     it('after registration tell the log why the mail was sent', async () => {
         userRepositoryMock.lockById.mockResolvedValue(undefined)
         const service = await load()
-        await service.sendVerificationEmailAfterRegistration(7n)
+        await service.sendVerificationEmailAfterRegistration(uid(7))
         expect(loggerMock.warn).toHaveBeenCalledWith(
             expect.objectContaining({ trigger: 'registration' }),
             'Failed to send verification email in background',

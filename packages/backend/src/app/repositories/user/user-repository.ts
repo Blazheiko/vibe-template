@@ -2,6 +2,7 @@ import { db } from '#database/db.js'
 import { sessionCheckDb } from '#database/session-check-db.js'
 import type { DbExecutor, DbTransaction } from '../transaction.js'
 import { users } from '#database/schema.js'
+import type { UserId } from '#app/domain/ids.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
@@ -17,19 +18,19 @@ export type UserUpdate = Partial<
 >
 
 export interface AdminUserListFilters {
-    userId?: bigint
+    userId?: UserId
     /** feat-241: only the users with this role. */
     role?: Role
     dateFrom?: Date
     dateTo?: Date
     /** Only users with an id below this one: the last id of the previous page. */
-    cursor?: bigint
+    cursor?: UserId
     /** Rows to read; the service asks for one more than a page. */
     limit?: number
 }
 
 export interface AdminUserListRow {
-    id: bigint
+    id: UserId
     name: string
     email: string | null
     createdAt: Date
@@ -38,13 +39,13 @@ export interface AdminUserListRow {
 }
 
 export interface AdminOnlineUserRow {
-    id: bigint
+    id: UserId
     name: string
     email: string | null
 }
 
 export interface AdminUserDetailRow {
-    id: bigint
+    id: UserId
     name: string
     email: string | null
     phone: string | null
@@ -54,45 +55,45 @@ export interface AdminUserDetailRow {
 
 export interface IUserRepository {
     create(data: UserInsert, executor?: DbExecutor): Promise<UserRow>
-    findById(id: bigint): Promise<UserRow | undefined>
+    findById(id: UserId): Promise<UserRow | undefined>
     findByEmail(email: string): Promise<UserRow | undefined>
     findByPhone(phone: string): Promise<UserRow | undefined>
     listAdminUsers(
         filters?: AdminUserListFilters,
     ): Promise<{ items: AdminUserListRow[]; total: number }>
-    findAdminOnlineUsersByIds(ids: bigint[]): Promise<AdminOnlineUserRow[]>
-    findAdminUserDetailById(id: bigint): Promise<AdminUserDetailRow | undefined>
-    emailExistsForOtherUser(email: string, excludeId: bigint): Promise<boolean>
-    phoneExistsForOtherUser(phone: string, excludeId: bigint): Promise<boolean>
+    findAdminOnlineUsersByIds(ids: UserId[]): Promise<AdminOnlineUserRow[]>
+    findAdminUserDetailById(id: UserId): Promise<AdminUserDetailRow | undefined>
+    emailExistsForOtherUser(email: string, excludeId: UserId): Promise<boolean>
+    phoneExistsForOtherUser(phone: string, excludeId: UserId): Promise<boolean>
     /** Pass the transaction when the update belongs to one (see `withTransaction`). */
-    update(id: bigint, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
+    update(id: UserId, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
     /**
      * The user's row locked FOR UPDATE until `tx` ends, or undefined when the user does not
      * exist. Every flow that changes credentials or consumes a one-time token locks the user
      * first, so they run one at a time per user (feat-096).
      */
-    lockById(id: bigint, tx: DbExecutor): Promise<UserRow | undefined>
+    lockById(id: UserId, tx: DbExecutor): Promise<UserRow | undefined>
     /**
      * Locks the rows of several users FOR UPDATE, one at a time in ascending id order, so two
      * transactions that lock the same pair (an admin and the account it acts on, two admins
      * acting on each other) wait for each other instead of deadlocking. Users that do not exist
      * are missing from the map.
      */
-    lockManyById(ids: readonly bigint[], tx: DbExecutor): Promise<Map<bigint, UserRow>>
+    lockManyById(ids: readonly UserId[], tx: DbExecutor): Promise<Map<UserId, UserRow>>
     /**
      * feat-240 (Р6): serializes every role change on one transaction-scoped advisory lock, taken
      * first in the transaction; released at commit or rollback.
      */
     lockRoleChanges(tx: DbTransaction): Promise<void>
     countByRole(role: Role, tx: DbExecutor): Promise<number>
-    updateRole(id: bigint, role: Role, tx: DbExecutor): Promise<Role | undefined>
+    updateRole(id: UserId, role: Role, tx: DbExecutor): Promise<Role | undefined>
     /**
      * Updates the user only while users.session_token is still `expectedSessionToken`, the
      * token the request presented (`Auth.getPresentedUserToken`). Undefined when the user is
      * gone or the token was rotated after the request was let in (feat-096).
      */
     updateIfSessionToken(
-        id: bigint,
+        id: UserId,
         expectedSessionToken: string,
         data: UserUpdate,
         executor?: DbExecutor,
@@ -102,7 +103,7 @@ export interface IUserRepository {
      * request presented. Undefined when the user is gone or the session was revoked meanwhile.
      */
     updateNameIfSessionToken(
-        id: bigint,
+        id: UserId,
         expectedSessionToken: string,
         name: string,
         tx: DbExecutor,
@@ -113,7 +114,7 @@ export interface IUserRepository {
      * profile change let in before it commits before it, never after.
      */
     shareIfSessionToken(
-        id: bigint,
+        id: UserId,
         expectedSessionToken: string,
         tx: DbExecutor,
     ): Promise<{ name: string } | undefined>
@@ -124,7 +125,7 @@ export interface IUserRepository {
      * replaced is deleted exactly once. Undefined when the user is gone or the token was rotated.
      */
     replaceAvatarIfSessionToken(
-        id: bigint,
+        id: UserId,
         expectedSessionToken: string,
         avatar: string | null,
     ): Promise<{ user: UserRow; previousAvatar: string | null } | undefined>
@@ -133,16 +134,16 @@ export interface IUserRepository {
      * Bounded like findSessionToken: it rejects once SESSION_TOKEN_CHECK_TIMEOUT_MS has
      * passed, and the statement is cancelled on the server.
      */
-    findRolesByIds(ids: bigint[]): Promise<Map<string, UserRow['role']>>
+    findRolesByIds(ids: UserId[]): Promise<Map<string, UserRow['role']>>
     /** The names of these users by id (feat-235: the audit log); a deleted user is absent. */
-    findNamesByIds(ids: readonly bigint[]): Promise<Map<string, string>>
+    findNamesByIds(ids: readonly UserId[]): Promise<Map<string, string>>
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
-    findSessionToken(id: bigint): Promise<string | undefined>
+    findSessionToken(id: UserId): Promise<string | undefined>
     /**
      * The current sessionToken of these users by id; a user that no longer exists is absent.
      * Bounded like findSessionToken.
      */
-    findSessionTokensByIds(ids: bigint[]): Promise<Map<string, string>>
+    findSessionTokensByIds(ids: UserId[]): Promise<Map<string, string>>
     /**
      * Sets a new password and rotates the sessionToken only if the stored password is
      * still `currentPassword` (null/'' for an account that has none yet) and the
@@ -151,13 +152,13 @@ export interface IUserRepository {
      * both win, and a change let in before a revocation cannot outlive it.
      */
     changePasswordIfCurrent(
-        id: bigint,
+        id: UserId,
         currentPassword: string | null,
         expectedSessionToken: string,
         data: { password: string; sessionToken: string },
         executor?: DbExecutor,
     ): Promise<UserRow | undefined>
-    delete(id: bigint): Promise<boolean>
+    delete(id: UserId): Promise<boolean>
 }
 
 export const userRepository: IUserRepository = {
@@ -346,7 +347,7 @@ export const userRepository: IUserRepository = {
     },
 
     async lockManyById(ids, tx) {
-        const locked = new Map<bigint, UserRow>()
+        const locked = new Map<UserId, UserRow>()
         const ordered = [...new Set(ids)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
         for (const id of ordered) {
             const row = await userRepository.lockById(id, tx)

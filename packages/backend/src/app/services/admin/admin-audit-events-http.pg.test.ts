@@ -14,6 +14,7 @@ import {
 } from '../../../test-support/redis-test-client.js'
 import { testAdminActor } from '../../../test-support/audit-actor.js'
 import { isStaffRole, type Role } from 'shared/access'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-235 T6 and T6a: GET /admin/audit-events over HTTP with the real route table, session_web,
 // csrf_guard, auth_guard and admin_guard, against a real PostgreSQL and Redis: who may read the
@@ -130,7 +131,7 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
     const redisAdmin = createTestRedis(PREFIX)
     const now = Date.now()
     const run = `http-${String(now)}`
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     const articleIds: bigint[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
     let insertedPrompt = false
@@ -248,8 +249,8 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
             action?: string
             targetType?: string
             targetId?: string
-            actorUserId?: bigint | null
-            targetUserId?: bigint | null
+            actorUserId?: UserId | null
+            targetUserId?: UserId | null
             requestId?: string | null
         }[],
     ): Promise<void> => {

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Partial success of POST /auth/change-password: the password is written to
@@ -141,7 +142,7 @@ describe('AuthController.changePassword', () => {
             expect.any(Function),
             's1',
             // feat-235: the signed-in user of the request is the actor of the audit event.
-            expect.objectContaining({ kind: 'user', userId: 7n }),
+            expect.objectContaining({ kind: 'user', userId: uid(7) }),
             sessionAuth,
         )
     })

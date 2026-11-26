@@ -14,24 +14,24 @@ import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { respond } from '#app/controllers/shared/controller-error.js'
 import { roleAssignmentService } from '#app/services/user/role-assignment-service.js'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { toEntityId, parseUserId, type UserId } from '#app/domain/ids.js'
 
 export default {
     async list(context: HttpContext<unknown, AdminUserListQuery>): Promise<AdminUserListResponse> {
         const query = context.httpData.query
 
-        let userId: bigint | undefined
+        let userId: UserId | undefined
         if (query.userId !== undefined && query.userId !== '') {
-            const parsed = parseEntityId(query.userId)
+            const parsed = parseUserId(query.userId)
             if (parsed === null) {
                 return mapControllerError(context, badRequest('userId must be a numeric string'))
             }
             userId = parsed
         }
 
-        let cursor: bigint | undefined
+        let cursor: UserId | undefined
         if (query.cursor !== undefined && query.cursor !== '') {
-            const parsed = parseEntityId(query.cursor)
+            const parsed = parseUserId(query.cursor)
             if (parsed === null) {
                 return mapControllerError(context, badRequest('cursor must be a numeric string'))
             }
@@ -64,7 +64,7 @@ export default {
      * email for a staff role and the last admin.
      */
     async setRole(context: HttpContext<SetUserRoleInput>): Promise<SetUserRoleResponse> {
-        const targetUserId = parseEntityId(context.httpData.params['id'] ?? '')
+        const targetUserId = parseUserId(context.httpData.params['id'] ?? '')
         if (targetUserId === null) {
             return mapControllerError(context, badRequest('Invalid user id', 'invalid_user_id'))
         }
@@ -79,7 +79,7 @@ export default {
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,
-            user: { id: String(value.userId), role: value.role },
+            user: { id: toEntityId(value.userId), role: value.role },
             changed: value.changed,
         }))
     },
@@ -90,7 +90,7 @@ export default {
      * left without a way to sign in, removes the factors and ends the target's sessions.
      */
     async resetMfa(context: HttpContext<ResetUserMfaInput>): Promise<ResetUserMfaResponse> {
-        const targetUserId = parseEntityId(context.httpData.params['id'] ?? '')
+        const targetUserId = parseUserId(context.httpData.params['id'] ?? '')
         if (targetUserId === null) {
             return mapControllerError(context, badRequest('Invalid user id', 'invalid_user_id'))
         }
@@ -104,7 +104,7 @@ export default {
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,
-            user: { id: String(value.userId) },
+            user: { id: toEntityId(value.userId) },
             removed: value.removed,
         }))
     },

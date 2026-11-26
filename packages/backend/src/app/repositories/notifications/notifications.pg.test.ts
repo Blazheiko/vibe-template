@@ -2,6 +2,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -14,8 +15,8 @@ describe.skipIf(!hasPg)('notification repositories on PostgreSQL', async () => {
     const { notificationRepository, notificationPreferenceRepository } =
         await import('#app/repositories/index.js')
 
-    const created: bigint[] = []
-    const newUser = async (): Promise<bigint> => {
+    const created: UserId[] = []
+    const newUser = async (): Promise<UserId> => {
         const [row] = await db
             .insert(users)
             .values({ name: 'notifications-test', email: `${crypto.randomUUID()}@example.test` })
@@ -24,7 +25,7 @@ describe.skipIf(!hasPg)('notification repositories on PostgreSQL', async () => {
         created.push(row.id)
         return row.id
     }
-    const add = (userId: bigint, link: string | null = '/account') =>
+    const add = (userId: UserId, link: string | null = '/account') =>
         notificationRepository.insert({
             userId,
             category: 'security',
@@ -32,7 +33,7 @@ describe.skipIf(!hasPg)('notification repositories on PostgreSQL', async () => {
             params: {},
             link,
         })
-    const addMany = async (userId: bigint, count: number): Promise<bigint[]> => {
+    const addMany = async (userId: UserId, count: number): Promise<bigint[]> => {
         const ids: bigint[] = []
         for (let i = 0; i < count; i++) ids.push(await add(userId))
         return ids

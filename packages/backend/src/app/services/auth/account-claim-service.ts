@@ -19,6 +19,7 @@ import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { invalidatePendingPhoneChallenges } from '#app/services/auth/phone-challenges.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
+import { toEntityId, type UserId } from '#app/domain/ids.js'
 
 // feat-097: an account whose address was never verified may have been created by somebody
 // who does not own that mailbox. The first proof of owning the mailbox (an authoritative
@@ -46,9 +47,9 @@ export { invalidatePendingPhoneChallenges }
 // feat-195: the WebSocket connections opened from those sessions are closed first.
 export async function destroySessionsQuietly(
     previousSessionToken: string,
-    userId: bigint,
+    userId: UserId,
 ): Promise<void> {
-    wsSessionRevocation.closeUserConnections(String(userId))
+    wsSessionRevocation.closeUserConnections(toEntityId(userId))
     try {
         const cleanup = await destroyAllSessions(previousSessionToken)
         if (!cleanup.complete) {

@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { UserId } from '#app/domain/ids.js'
 import { Redis } from 'ioredis'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -72,7 +73,7 @@ describe.skipIf(!hasPg || !hasRedis)('user:set-role (feat-240)', async () => {
     const listener = new Redis(REDIS_TEST_URL ?? 'redis://127.0.0.1:6379', { lazyConnect: true })
     const received: Record<string, unknown>[] = []
     const stamp = String(Date.now())
-    const ids: bigint[] = []
+    const ids: UserId[] = []
     let counter = 0
 
     const insertUser = async (verified: boolean) => {

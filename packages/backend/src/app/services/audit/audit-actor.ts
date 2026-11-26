@@ -3,6 +3,7 @@ import type { AuditProof, AuditSystemSource } from 'shared/audit'
 
 import logger from '#logger'
 import type { UserRow } from '#app/repositories/index.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export type AuditActorRole = UserRow['role']
 
@@ -23,7 +24,7 @@ export type AuditLogger = Pick<Logger, 'info'>
 export type AuditActor =
     | {
           kind: 'user'
-          userId: bigint
+          userId: UserId
           role: AuditActorRole | null
           requestId: string
           proof: AuditProof | null
@@ -89,7 +90,7 @@ export interface AuditRequest {
 }
 
 /** The signed-in user `userId` of `request`. */
-export function userActorOf(userId: bigint, request: AuditRequest): UserAuditActor {
+export function userActorOf(userId: UserId, request: AuditRequest): UserAuditActor {
     return {
         kind: 'user',
         userId,

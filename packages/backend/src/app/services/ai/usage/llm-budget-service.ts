@@ -1,5 +1,6 @@
 import redis from '#database/redis-rate-limit.js'
 import logger from '#logger'
+import type { UserId } from '#app/domain/ids.js'
 
 // The daily token budget of a user (ADR 0003). Enforcement lives in Redis only: the usage
 // log (`llm_text_usage`) is an audit written after the fact and cannot be asked "may this
@@ -65,7 +66,7 @@ const secondsToUtcMidnight = (now: Date): number => {
     return Math.max(1, Math.ceil((next - now.getTime()) / 1000))
 }
 
-const counterKey = (userId: bigint, day: string): string => `llm:budget:${String(userId)}:${day}`
+const counterKey = (userId: UserId, day: string): string => `llm:budget:${String(userId)}:${day}`
 
 function sum(parts: Record<string, number>): number {
     return Object.values(parts).reduce((total, tokens) => total + tokens, 0)
@@ -120,7 +121,7 @@ function reservationOf(
  * `limit` 0 switches the budget off (development only; production refuses it at startup).
  */
 export async function reserveDailyTokens(
-    userId: bigint,
+    userId: UserId,
     parts: Record<string, number>,
     options: { limit: number; now?: Date },
 ): Promise<ReserveResult> {

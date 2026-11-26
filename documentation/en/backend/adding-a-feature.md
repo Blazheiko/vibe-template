@@ -109,12 +109,15 @@ pnpm --filter shared build
 
 Add the table to the end of [packages/backend/src/database/schema.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/schema.ts). All the helpers you need (`pgTable`, `bigserial`, `bigint`, `varchar`, `text`, `timestamp`, `index`) are already imported there, and `users` is declared higher up in the file.
 
+The id of a row is a branded type ([ADR 0007](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0007-branded-types.md)): declare it in [database/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/ids.ts) as `export type NoteId = Brand<bigint, 'NoteId'>`, add it to the `import type` of `schema.ts`, and add `parseNoteId` next to `parseUserId` in [app/domain/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts) if an id comes from a path or a query. `.$type<…>()` changes only the TypeScript type: the migration is the same. Then a note id and a user id cannot be swapped, and outside text becomes a `NoteId` only through `parseNoteId`; a cast (`as NoteId`) outside `app/domain` is an ESLint error (`local/no-brand-cast`).
+
 ```ts
 export const notes = pgTable(
     'notes',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<NoteId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         title: varchar('title', { length: 200 }).notNull(),
@@ -154,7 +157,7 @@ To apply the migration to a live DB, run `pnpm --filter backend db:migrate` (you
 
 ## Step 4. Repository
 
-The repository is the only place where Drizzle queries are run. The pattern is taken from [push-subscription-repository.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-subscription-repository.ts): row types via `InferSelectModel` / `InferInsertModel`, an `I...Repository` interface and an implementation object.
+The repository is the only place where Drizzle queries are run. Its methods take branded ids, the owner first: `findForUser(userId, id)`, `update(userId, id, data)` (ADR 0007, Р11). The pattern is taken from [push-subscription-repository.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-subscription-repository.ts): row types via `InferSelectModel` / `InferInsertModel`, an `I...Repository` interface and an implementation object.
 
 ```ts
 // packages/backend/src/app/repositories/note/note-repository.ts
@@ -162,13 +165,14 @@ import { db } from '#database/db.js'
 import { notes } from '#database/schema.js'
 import { desc, eq } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import type { UserId } from '#app/domain/ids.js'
 
 export type NoteRow = InferSelectModel<typeof notes>
 export type NoteInsert = InferInsertModel<typeof notes>
 
 export interface INoteRepository {
     create(data: NoteInsert): Promise<NoteRow>
-    findByUserId(userId: bigint): Promise<NoteRow[]>
+    findByUserId(userId: UserId): Promise<NoteRow[]>
 }
 
 export const noteRepository: INoteRepository = {
@@ -199,17 +203,18 @@ export type { NoteRow, NoteInsert } from './note/note-repository.js'
 
 ## Step 5. Transformer
 
-The transformer turns a DB row into a public DTO: `bigint` → `string`, `Date` → a UTC ISO string via `toISOString()`, as in [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Internal fields (`userId`) are not exposed.
+The transformer turns a DB row into a public DTO: an id → `string` with `toEntityId`, `Date` → a UTC ISO string via `toISOString()`, as in [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Internal fields (`userId`) are not exposed.
 
 ```ts
 // packages/backend/src/app/transformers/note-transformer.ts
 import type { Note } from 'shared'
+import { toEntityId } from '#app/domain/ids.js'
 import type { NoteRow } from '#app/repositories/index.js'
 
 export const noteTransformer = {
     serialize(note: NoteRow): Note {
         return {
-            id: String(note.id),
+            id: toEntityId(note.id),
             title: note.title,
             body: note.body,
             created_at: note.createdAt.toISOString(),
@@ -241,15 +246,16 @@ import type { Note } from 'shared'
 import { Result } from 'better-result'
 import { noteRepository } from '#app/repositories/index.js'
 import { noteTransformer } from '#app/transformers/index.js'
+import type { UserId } from '#app/domain/ids.js'
 import type { AppResult } from '#app/services/shared/errors.js'
 
 export const noteService = {
-    async getNotes(userId: bigint): Promise<AppResult<{ notes: Note[] }>> {
+    async getNotes(userId: UserId): Promise<AppResult<{ notes: Note[] }>> {
         const rows = await noteRepository.findByUserId(userId)
         return Result.ok({ notes: noteTransformer.serializeArray(rows) })
     },
 
-    async createNote(userId: bigint, payload: CreateNoteInput): Promise<AppResult<{ note: Note }>> {
+    async createNote(userId: UserId, payload: CreateNoteInput): Promise<AppResult<{ note: Note }>> {
         const created = await noteRepository.create({
             userId,
             title: payload.title,

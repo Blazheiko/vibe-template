@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import type { SmsChallengeId } from '#app/domain/ids.js'
 import { Result } from 'better-result'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -70,7 +71,7 @@ describe.skipIf(!hasPg)('phone reset challenges per session on PostgreSQL', asyn
             .sort((a, b) => String(a.session).localeCompare(String(b.session)))
     }
 
-    const idOf = (result: Awaited<ReturnType<typeof start>>): string => {
+    const idOf = (result: Awaited<ReturnType<typeof start>>): SmsChallengeId => {
         if (Result.isError(result) || result.value === SESSION_CHALLENGES_FULL) {
             throw new Error('no challenge was opened')
         }

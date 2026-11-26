@@ -14,6 +14,7 @@ import type * as UserEventBusModule from '#app/services/communication/user-event
 import { notificationRepository } from '#app/repositories/index.js'
 import { pushNotificationSenderService } from '#app/services/notifications/push-notification-sender-service.js'
 import { pushTextOf } from '#app/services/notifications/notification-push-texts.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-236 (Р5): a notification is stored first, then the user's connections are told and the
 // push goes. Best effort, after the business change has committed: a failure of any step is
@@ -55,7 +56,7 @@ const check = <K extends NotificationKind>(kind: K, params: NotificationParams<K
 }
 
 async function deliver<K extends NotificationKind>(
-    userId: bigint,
+    userId: UserId,
     kind: K,
     params: NotificationParams<K>,
 ): Promise<NotificationDelivery> {
@@ -131,7 +132,7 @@ export const notificationService = {
      * throws, so the code after it (a security mail) runs whatever happens here.
      */
     notify<K extends NotificationKind>(
-        userId: bigint,
+        userId: UserId,
         kind: K,
         params: NotificationParams<K>,
     ): void {

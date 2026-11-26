@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 const listAdminUsers = vi.fn()
 vi.mock('#app/repositories/index.js', () => ({ userRepository: { listAdminUsers } }))
@@ -43,12 +44,16 @@ describe('adminUserService.listUsers', () => {
         })
 
         const result = await adminUserService.listUsers({
-            userId: 5n,
+            userId: uid(5),
             role: 'kb_editor',
             limit: 10,
         })
 
-        expect(listAdminUsers).toHaveBeenCalledWith({ userId: 5n, role: 'kb_editor', limit: 11 })
+        expect(listAdminUsers).toHaveBeenCalledWith({
+            userId: uid(5),
+            role: 'kb_editor',
+            limit: 11,
+        })
         expect(result).toEqual({
             items: [
                 {
@@ -87,9 +92,9 @@ describe('adminUserService.listUsers', () => {
     it('passes the cursor of the previous page to the repository', async () => {
         listAdminUsers.mockResolvedValue({ items: [row(7)], total: 40 })
 
-        await adminUserService.listUsers({ limit: 2, cursor: 8n })
+        await adminUserService.listUsers({ limit: 2, cursor: uid(8) })
 
-        expect(listAdminUsers).toHaveBeenCalledWith({ limit: 3, cursor: 8n })
+        expect(listAdminUsers).toHaveBeenCalledWith({ limit: 3, cursor: uid(8) })
     })
 
     it.each([

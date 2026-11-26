@@ -1,4 +1,5 @@
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
+import { toEntityId } from '#app/domain/ids.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import { userTransformer } from '#app/transformers/index.js'
@@ -37,7 +38,7 @@ export async function authSuccessPayload(
     let wsToken = ''
     if (sessionInfo !== null) {
         try {
-            wsToken = await generateWsToken(sessionInfo, String(user.id))
+            wsToken = await generateWsToken(sessionInfo, toEntityId(user.id))
         } catch (err) {
             if (options.wsToken !== 'optional') throw err
             logger.warn({ err, userId: String(user.id) }, 'WebSocket token not issued; main/init')

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { toEntityId } from '#app/domain/ids.js'
 import type { AuthenticationResponse } from 'shared/schemas'
 
 import { throttlePolicies } from '#config/throttle-policies.js'
@@ -120,7 +121,7 @@ export const passkeySignIn = {
             return refused()
         }
 
-        const loggedIn = await context.auth.login(String(user.id), user.sessionToken, {
+        const loggedIn = await context.auth.login(toEntityId(user.id), user.sessionToken, {
             method: 'passkey',
         })
         if (loggedIn === null) return Result.err(internalMessage('Failed to log in user'))

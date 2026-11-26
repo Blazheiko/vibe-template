@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { asUserId } from '#app/domain/ids.js'
 import type { WsContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { supportService } from '#app/services/support/support-service.js'
@@ -21,7 +22,7 @@ export default {
         }
 
         const payload = getTypedPayload(context)
-        const userId = BigInt(userData.userId)
+        const userId = asUserId(userData.userId)
 
         const admission = await supportService.admitOpenChat(userId)
         if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
@@ -44,7 +45,7 @@ export default {
         }
 
         const payload = getTypedPayload(context)
-        const userId = BigInt(userData.userId)
+        const userId = asUserId(userData.userId)
 
         const admission = await supportService.admitChat(userId, payload.message)
         if (Result.isError(admission)) return mapWsControllerError(context, admission.error)

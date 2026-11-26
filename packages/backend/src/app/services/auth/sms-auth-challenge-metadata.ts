@@ -1,14 +1,14 @@
 import { rateLimited, type AppError } from '#app/services/shared/errors.js'
+import { parseUserId, type UserId } from '#app/domain/ids.js'
 
-export function extractChallengeUserId(metadata: unknown): bigint | null {
+export function extractChallengeUserId(metadata: unknown): UserId | null {
     if (
         metadata !== null &&
         typeof metadata === 'object' &&
         'userId' in metadata &&
-        typeof metadata.userId === 'string' &&
-        /^\d+$/.test(metadata.userId)
+        typeof metadata.userId === 'string'
     ) {
-        return BigInt(metadata.userId)
+        return parseUserId(metadata.userId)
     }
 
     return null
