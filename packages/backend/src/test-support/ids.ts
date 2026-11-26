@@ -1,3 +1,4 @@
+import type { EntityId } from 'shared/brand'
 import type { UserId } from '#app/domain/ids.js'
 
 /**
@@ -5,3 +6,6 @@ import type { UserId } from '#app/domain/ids.js'
  * a value directly (ADR 0007, no-brand-cast exempts them); this keeps the cast in one place.
  */
 export const uid = (n: bigint | number): UserId => BigInt(n) as UserId
+
+/** An id as the wire carries it (feat-268): broadcast payloads and responses brand it. */
+export const eid = (n: bigint | number | string): EntityId => String(n) as EntityId

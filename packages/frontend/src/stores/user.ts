@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { InitResponse, Profile, Role } from 'shared'
-import { isStaffRole, roleHasPermission, type Permission } from 'shared/access'
+import type { AuthUser, InitResponse, IsoDateTime, Profile } from 'shared'
+import { isStaffRole, roleHasPermission, type Permission, type Role } from 'shared/access'
 import { sentryService as sentry } from '@/utils/sentry-service'
 import type { StaffMfaReason } from '@/utils/staff-mfa'
 
@@ -19,17 +19,11 @@ export function waitForApp(): Promise<void> {
     return _readyPromise
 }
 
-export interface User {
-    id: string
-    name?: string
-    email?: string | null
-    phone?: string | null
-    emailVerified?: boolean
-    emailVerifiedAt?: string | null
-    avatar?: string | null
-    role?: Role
-    [key: string]: string | number | boolean | null | undefined
-}
+/**
+ * The signed-in user (feat-268): the account as the sign-in answers it. main/init carries more
+ * (its profile goes to `profile`), and what else it has stays in the object as it came.
+ */
+export type User = AuthUser
 
 type InitUser = NonNullable<Extract<InitResponse, { status: 'ok' }>['user']>
 
@@ -59,7 +53,7 @@ export const useUserStore = defineStore('user', () => {
      * feat-245 (Р8): set while this session is a recovery session (main/init says so). The app
      * shows only the recovery wizard then: every other route answers 403 recovery_session.
      */
-    const recovery = ref<{ expiresAt: string; replaced: boolean } | null>(null)
+    const recovery = ref<{ expiresAt: IsoDateTime; replaced: boolean } | null>(null)
     /**
      * feat-240 (Р8): grows with every `access_changed` of this tab's socket and with every change
      * of account. A role read over HTTP is applied only when it has not grown since the read
@@ -113,7 +107,7 @@ export const useUserStore = defineStore('user', () => {
         return true
     }
 
-    function setRecovery(state: { expiresAt: string; replaced: boolean } | null) {
+    function setRecovery(state: { expiresAt: IsoDateTime; replaced: boolean } | null) {
         recovery.value = state
     }
 

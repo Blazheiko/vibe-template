@@ -26,14 +26,14 @@ flowchart LR
 
 Transformers in [`app/transformers/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/index.ts) are objects with `serialize` / `serializeArray` methods (push subscriptions also have `serializeWithLogs` / `serializeArrayWithLogs`, and push logs have `serializeSummary`). There are `userTransformer`, `pushSubscriptionTransformer`, `pushNotificationLogTransformer` and `promptTransformer`. They:
 
-- turn ids into `string` with `toEntityId` from [`app/domain/ids.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts) (a branded id becomes text on the wire, ADR 0007);
-- convert `Date` to a UTC ISO string via `toISOString()` (the format `2026-10-25T10:00:00.000Z` does not depend on the process time zone); `userTransformer` and `pushSubscriptionTransformer` also rename `createdAt`/`updatedAt` → `created_at`/`updated_at`;
+- turn ids into `EntityId` with `toEntityId` from [`app/domain/ids.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts) (a branded id becomes text on the wire, ADR 0007; response schemas declare it `EntityIdSchema`, feat-268);
+- convert `Date` to a UTC ISO string: the `*At` fields a schema declares `IsoDateTimeSchema` through `toIsoDateTime` / `toIsoDateTimeOrNull` from `shared/brand`, the rest through `toISOString()`. Text the server got ready-made (an ISO string from the session, a PostgreSQL `timestamp`, an encoded cursor, the public id of a session) is branded by the constructors of [`app/domain/wire.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/wire.ts) (the format `2026-10-25T10:00:00.000Z` does not depend on the process time zone); `userTransformer` and `pushSubscriptionTransformer` also rename `createdAt`/`updatedAt` → `created_at`/`updated_at`;
 - strip sensitive fields: [user-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/user-transformer.ts) drops `password` and `sessionToken` (the session namespace in Redis, see [Authentication](/en/backend/auth#what-usertoken-is)) and adds the derived `emailVerified: boolean`.
 
 ```ts
 serialize(user: UserRow): SerializedUser {
     const { id, password: _password, sessionToken: _sessionToken, createdAt, updatedAt, emailVerifiedAt, ...rest } = user
-    return { ...rest, id: String(id), created_at: createdAt.toISOString(), /* ... */ }
+    return { ...rest, id: toEntityId(id), created_at: createdAt.toISOString(), /* ... */ }
 }
 ```
 

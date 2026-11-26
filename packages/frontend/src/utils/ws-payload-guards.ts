@@ -1,6 +1,6 @@
 import type { BroadcastContracts, BroadcastEventName } from 'shared/contracts'
 import type { BroadcastPayload } from 'shared/schemas'
-import { isValidEntityId } from 'shared/brand'
+import { isValidEntityId, type EntityId } from 'shared/brand'
 import { isRole } from 'shared/access'
 import {
     COLOR_THEMES,
@@ -22,8 +22,9 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const hasOnlyKeys = (value: Record<string, unknown>, keys: ReadonlySet<string>): boolean =>
     Object.keys(value).every((key) => keys.has(key))
 
-// The id check the schemas use (feat-262): digits, no leading zero, up to the bigint bound.
-const isEntityId = (value: unknown): value is string =>
+// The id check the schemas use (feat-262): digits, no leading zero, up to the bigint bound. A
+// value that passes is an EntityId, as the schema would brand it (feat-268).
+const isEntityId = (value: unknown): value is EntityId =>
     typeof value === 'string' && isValidEntityId(value)
 
 const TOKEN_KEYS = new Set(['token', 'clientMessageId'])

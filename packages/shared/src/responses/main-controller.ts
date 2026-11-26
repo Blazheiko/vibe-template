@@ -1,4 +1,6 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 import { ProfilePreferencesSchema, ProfileRevisionSchema } from './account-controller.js'
@@ -24,16 +26,16 @@ export const InitResponseSchema = type.or(
         status: "'ok'",
         'csrfToken?': 'string',
         'user?': {
-            id: 'string',
+            id: EntityIdSchema,
             name: 'string',
             email: 'string',
             'phone?': 'string | null',
             emailVerified: 'boolean',
-            'emailVerifiedAt?': 'string | null',
+            'emailVerifiedAt?': IsoDateTimeSchema.or('null'),
             'avatar?': 'string | null',
             'role?': RoleSchema,
-            createdAt: 'string',
-            updatedAt: 'string',
+            createdAt: IsoDateTimeSchema,
+            updatedAt: IsoDateTimeSchema,
             // The profile preferences and their revision (feat-232, Р6): the same values as
             // GET /account/profile, so the client applies them right after init.
             preferences: ProfilePreferencesSchema,
@@ -43,7 +45,7 @@ export const InitResponseSchema = type.or(
         /** feat-245 (Р8): null in a recovery session, which opens no WebSocket. */
         'wsToken?': 'string | null',
         /** feat-245 (Р8): a recovery session: the client shows only the recovery wizard. */
-        'recovery?': { expiresAt: 'string', replaced: 'boolean' },
+        'recovery?': { expiresAt: IsoDateTimeSchema, replaced: 'boolean' },
         'storage?': {
             'cdnUrl?': 'string',
             's3Prefix?': 'string',

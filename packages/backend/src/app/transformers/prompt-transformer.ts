@@ -1,11 +1,12 @@
 import type { PromptRow } from '#app/repositories/index.js'
+import { toIsoDateTime, type EntityId, type IsoDateTime } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 
 // Wire shape of llm_system_prompts rows (feat-047): id as a string, dates as ISO strings.
 export type SerializedPrompt = Omit<PromptRow, 'id' | 'createdAt' | 'updatedAt' | 'revision'> & {
-    id: string
-    createdAt: string
-    updatedAt: string
+    id: EntityId
+    createdAt: IsoDateTime
+    updatedAt: IsoDateTime
 }
 
 export const promptTransformer = {
@@ -15,8 +16,8 @@ export const promptTransformer = {
         return {
             ...rest,
             id: toEntityId(id),
-            createdAt: createdAt.toISOString(),
-            updatedAt: updatedAt.toISOString(),
+            createdAt: toIsoDateTime(createdAt),
+            updatedAt: toIsoDateTime(updatedAt),
         }
     },
 

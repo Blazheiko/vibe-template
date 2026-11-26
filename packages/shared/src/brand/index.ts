@@ -72,3 +72,21 @@ export const addMs = (at: UnixMs, delta: Milliseconds): UnixMs => (at + delta) a
 /** The duration from `earlier` to `later` (negative when `later` is before `earlier`). */
 export const diffMs = (later: UnixMs, earlier: UnixMs): Milliseconds =>
     (later - earlier) as Milliseconds
+
+// Wire values of the responses (feat-268, plan Р8). The schemas live in `shared/brands`; these
+// are the same types, so the backend can brand a value it made itself without ArkType.
+
+/** The id of a row as it travels in JSON: canonical decimal text (`isValidEntityId`). */
+export type EntityId = Brand<string, 'EntityId'>
+/** A moment as ISO 8601 text, as `Date.prototype.toISOString` writes it. */
+export type IsoDateTime = Brand<string, 'IsoDateTime'>
+/** An opaque page cursor: the client sends back what the server gave, and never builds one. */
+export type Cursor = Brand<string, 'Cursor'>
+/** The public id of a session (22 base64url characters of an HMAC); the session id is never sent. */
+export type SessionPublicId = Brand<string, 'SessionPublicId'>
+
+/** The ISO text of a date the server holds. */
+export const toIsoDateTime = (date: Date): IsoDateTime => date.toISOString() as IsoDateTime
+/** Like `toIsoDateTime`, keeping `null` for a missing date. */
+export const toIsoDateTimeOrNull = (date: Date | null): IsoDateTime | null =>
+    date === null ? null : toIsoDateTime(date)

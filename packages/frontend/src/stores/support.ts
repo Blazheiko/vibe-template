@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { toIsoDateTime } from 'shared/brand'
 import { ref } from 'vue'
 import { supportApi } from '@/utils/api'
 import type { SupportChatMessage } from '@/utils/api'
@@ -127,7 +128,7 @@ export const useSupportStore = defineStore('support', () => {
                 role: 'assistant',
                 content,
                 screenshots: screenshots.length > 0 ? screenshots : null,
-                createdAt: new Date().toISOString(),
+                createdAt: toIsoDateTime(new Date()),
             })
         }
         streamingContent.value = ''
@@ -153,7 +154,7 @@ export const useSupportStore = defineStore('support', () => {
             role: 'user',
             content: text,
             screenshots: null,
-            createdAt: new Date().toISOString(),
+            createdAt: toIsoDateTime(new Date()),
         })
         return id
     }

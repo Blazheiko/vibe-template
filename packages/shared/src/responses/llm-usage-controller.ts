@@ -1,12 +1,14 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 // One llm_text_usage row: every started call, however it ended (feat-118). Token counts are an
 // estimate when tokensEstimated is true, and null only on rows written before feat-118 without
 // reported usage; userId is null for system calls (knowledge-base indexing).
 export const TextUsageRowSchema = type({
-    id: 'string',
-    userId: 'string | null',
+    id: EntityIdSchema,
+    userId: EntityIdSchema.or('null'),
     model: 'string',
     feature: "'PROMPT_TEST' | 'SUPPORT_CHAT' | 'SUPPORT_QUERY_TRANSLATION' | 'SUPPORT_EMBEDDING'",
     // null when the text is not kept (AI_USAGE_STORE_PROMPTS=false, or purged): then the SHA-256
@@ -19,7 +21,7 @@ export const TextUsageRowSchema = type({
     totalTokens: 'number | null',
     status: "'completed' | 'aborted' | 'failed'",
     tokensEstimated: 'boolean',
-    createdAt: 'string',
+    createdAt: IsoDateTimeSchema,
 })
 export type TextUsageRow = typeof TextUsageRowSchema.infer
 

@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { pushSubscriptionApi } from '@/utils/api'
-import type { GetSubscriptionsResponse } from 'shared/responses'
+import type { GetSubscriptionsResponse, SerializedPushSubscription } from 'shared/responses'
 import { PUSH_ENDPOINT_MAX_LENGTH } from 'shared/limits'
 import { apiPath } from '@/utils/api-path'
 import { createResource, isAbortError } from '@/utils/resource-state'
@@ -29,11 +29,8 @@ import {
 /** How long each push step of a sign-out waits for the push service. */
 const RELEASE_TIMEOUT_MS = 3000
 
-interface ServerSubscription {
-    id: string
-    isActive: boolean
-    endpoint: string
-}
+/** What the store reads of a subscription of the list route (feat-268: the contract's type). */
+type ServerSubscription = Pick<SerializedPushSubscription, 'id' | 'isActive' | 'endpoint'>
 
 /**
  * One spelling for both sides: the server stores the endpoint with upper-case percent escapes

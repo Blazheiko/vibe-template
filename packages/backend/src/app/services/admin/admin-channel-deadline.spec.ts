@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { eid } from '../../../test-support/ids.js'
 import type { Role } from 'shared/access'
 import type { SessionAuthState } from 'shared/mfa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -70,7 +71,7 @@ const socket = (uuid: string, auth: SessionAuthState | undefined, role: Role = '
 }
 
 const upsert = {
-    id: '42',
+    id: eid(42),
     name: 'Ada',
     email: 'ada@example.test',
     appType: 'web' as const,

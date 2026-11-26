@@ -8,6 +8,7 @@ import { useUserStore } from '@/stores/user'
 import type { AuditEvent } from 'shared/responses'
 
 import en from '@/locales/en'
+import { asEntityId, asIsoDateTime, testUser } from '../../../__tests__/brands'
 
 // feat-235 (Р10): the audit log page with the API replaced: the filters live in the URL, a row
 // opens its changes, "Load more" appends the next page, a proof holder is shown without a user.
@@ -21,13 +22,13 @@ const { default: AdminAuditLogView } = await import('../AdminAuditLogView.vue')
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
 
 const event = (id: string, over: Partial<AuditEvent> = {}): AuditEvent => ({
-    id,
-    occurredAt: '2026-11-20T10:00:00.123456Z',
+    id: asEntityId(id),
+    occurredAt: asIsoDateTime('2026-11-20T10:00:00.123456Z'),
     action: 'kb.article.updated',
     group: 'kb',
     actor: {
         kind: 'user',
-        userId: '5',
+        userId: asEntityId('5'),
         name: 'Ann Admin',
         deleted: false,
         role: 'admin',
@@ -69,7 +70,7 @@ const mountAt = async (url: string) => {
 describe('AdminAuditLogView', () => {
     beforeEach(() => {
         setActivePinia(createPinia())
-        useUserStore().setUser({ id: '1', role: 'admin' })
+        useUserStore().setUser(testUser({ id: asEntityId('1'), role: 'admin' }))
         api.list.mockReset()
         api.list.mockResolvedValue(page([event('1')]))
     })
@@ -147,7 +148,7 @@ describe('AdminAuditLogView', () => {
                         source: null,
                     },
                     target: { type: 'user', id: '7' },
-                    targetUser: { id: '7', name: 'Bob', deleted: false },
+                    targetUser: { id: asEntityId('7'), name: 'Bob', deleted: false },
                     changes: null,
                     metadata: { proof: 'email_link', claimed: false },
                 }),
@@ -230,7 +231,7 @@ describe('AdminAuditLogView', () => {
 
     // feat-240 (Р5, Р10): without audit.read the filters offer the account events only.
     it('offers a support_operator only the sign-in and session groups, actions and user targets', async () => {
-        useUserStore().setUser({ id: '1', role: 'support_operator' })
+        useUserStore().setUser(testUser({ id: asEntityId('1'), role: 'support_operator' }))
         const { wrapper } = await mountAt('/admin/audit-log')
 
         const groups = wrapper

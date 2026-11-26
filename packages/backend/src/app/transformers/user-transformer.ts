@@ -1,4 +1,5 @@
 import type { UserRow } from '#app/repositories/index.js'
+import { toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 
 export type SerializedUser = Omit<
@@ -11,11 +12,11 @@ export type SerializedUser = Omit<
     | 'updatedAt'
     | 'emailVerifiedAt'
 > & {
-    id: string
+    id: EntityId
     created_at: string | null
     updated_at: string | null
     emailVerified: boolean
-    emailVerifiedAt: string | null
+    emailVerifiedAt: IsoDateTime | null
 }
 
 export const userTransformer = {
@@ -39,7 +40,7 @@ export const userTransformer = {
             created_at: createdAt.toISOString(),
             updated_at: updatedAt.toISOString(),
             emailVerified: emailVerifiedAt !== null,
-            emailVerifiedAt: emailVerifiedAt === null ? null : emailVerifiedAt.toISOString(),
+            emailVerifiedAt: toIsoDateTimeOrNull(emailVerifiedAt),
         }
     },
 

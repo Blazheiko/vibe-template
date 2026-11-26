@@ -1,8 +1,9 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 const AvatarUserSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     name: 'string',
     email: 'string',
     'avatar?': 'string | null',

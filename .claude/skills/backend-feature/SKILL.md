@@ -71,14 +71,16 @@ Query inputs live in `schemas/query/`. A body route that reads nothing uses `Emp
 `packages/shared/src/responses/<resource>-controller.ts`. Each response is
 `type.or(<success>, CanonicalErrorResponseSchema)`; success uses `status: "'success'"`.
 Response schemas are an **allow-list** (feat-046): every field the client gets is listed, an extra
-field is a 500 outside production. IDs are `'string'`, dates `'string'` (ISO UTC).
+field is a 500 outside production. IDs are `EntityIdSchema` (`shared/brands`, feat-268), camelCase dates
+`IsoDateTimeSchema`, page cursors `CursorSchema`; snake-case `created_at` stays `'string'` as in the existing DTOs.
 
 ```ts
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 export const NoteSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     title: 'string',
     body: 'string | null',
     created_at: 'string | null',
@@ -213,7 +215,8 @@ Export value **and** types from the barrel `repositories/index.ts` — `layering
 ## Step 6: Transformer
 
 `packages/backend/src/app/transformers/<resource>-transformer.ts`, exported from `transformers/index.ts`.
-an id → `toEntityId(id)` (`#app/domain/ids.js`), `Date` → `toISOString()` (no luxon). Return the shared wire type (`Note`) and
+an id → `toEntityId(id)` (`#app/domain/ids.js`, returns `EntityId`), `Date` → `toISOString()`, or
+`toIsoDateTime(date)` (`shared/brand`) for a field the schema declares `IsoDateTimeSchema` (no luxon); a cast to a brand fails `no-brand-cast`. Return the shared wire type (`Note`) and
 list fields explicitly — don't spread the row, so server-only columns (`userId`, keys, IPs) never leak.
 
 ```ts

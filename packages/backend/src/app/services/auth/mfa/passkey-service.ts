@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { toIsoDateTime, toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { nanoid } from 'nanoid'
 import {
@@ -43,7 +44,7 @@ import {
     registrationOptions,
     verifyWebAuthnCeremony,
 } from './webauthn-ceremony.js'
-import type { UserId, PasskeyId } from '#app/domain/ids.js'
+import { type UserId, type PasskeyId, toEntityId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р3 rows 1–3, Р6, Р12): the passkeys of the signed-in
 // user. A registration is two requests: the options put a challenge and an enrollment id into the
@@ -69,21 +70,21 @@ export interface PasskeyRequest {
 }
 
 export interface PasskeyView {
-    id: string
+    id: EntityId
     name: string
     deviceType: string
     backedUp: boolean
-    createdAt: string
-    lastUsedAt: string | null
+    createdAt: IsoDateTime
+    lastUsedAt: IsoDateTime | null
 }
 
 export const passkeyView = (row: WebAuthnCredentialRow): PasskeyView => ({
-    id: String(row.id),
+    id: toEntityId(row.id),
     name: row.name,
     deviceType: row.deviceType,
     backedUp: row.backedUp,
-    createdAt: row.createdAt.toISOString(),
-    lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+    createdAt: toIsoDateTime(row.createdAt),
+    lastUsedAt: toIsoDateTimeOrNull(row.lastUsedAt ?? null),
 })
 
 const authOf = (session: Session): SessionAuthState | undefined => session.sessionInfo?.data.auth
@@ -446,7 +447,7 @@ async function finishInSession(
                 ? current
                 : withReplacementFactor(current, {
                       kind: 'webauthn',
-                      id: String(row.id),
+                      id: toEntityId(row.id),
                       at: new Date(now).toISOString(),
                   }),
         { removeKeys: REGISTRATION_KEYS },

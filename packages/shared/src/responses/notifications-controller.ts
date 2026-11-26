@@ -1,17 +1,18 @@
 import { type } from '@arktype/type'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { NOTIFICATION_CATEGORIES, NOTIFICATION_CHANNELS } from '../notifications/catalog.js'
 import { NotificationParamsSchemas } from '../schemas/notifications/params.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
-import { EntityIdStringSchema } from '../brands/ids.js'
+import { EntityIdSchema } from '../brands/ids.js'
 
-const IdSchema = EntityIdStringSchema
+const IdSchema = EntityIdSchema
 const UnreadCountSchema = 'number.integer >= 0'
 
 const ItemBase = type({
     id: IdSchema,
     link: 'string | null',
-    createdAt: 'string',
-    readAt: 'string | null',
+    createdAt: IsoDateTimeSchema,
+    readAt: IsoDateTimeSchema.or('null'),
 })
 const P = NotificationParamsSchemas
 

@@ -56,3 +56,7 @@ Id рядків БД — це `bigint` у бекенді й рядок на др
   (`documentation/backend/adding-a-feature.md`, скіл `backend-feature`).
 - `$type` змінює лише типи: `db:generate` не створює міграції.
 - Приведення до бренду поза конструкторами ловить ESLint-правило `no-brand-cast` (feat-263).
+- Відповіді й broadcast-події несуть `EntityId`, `IsoDateTime`, `Cursor` і `SessionPublicId` (feat-268): бекенд
+  брендує значення через `toEntityId`, `toIsoDateTime` і конструктори `app/domain/wire.ts`, фронтенд отримує типи з
+  `shared/responses`, а правило `no-brand-cast` діє й у `packages/frontend`. Брендоване поле query надсилається
+  рядком (`QueryWireValue` знімає бренд). На фронтенді id різних сутностей лишаються одним `EntityId`.

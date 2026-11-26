@@ -1,16 +1,18 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6): the passkeys of the signed-in account.
 
 export const PasskeySchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     name: 'string',
     /** singleDevice or multiDevice (a synced passkey). */
     deviceType: 'string',
     backedUp: 'boolean',
-    createdAt: 'string',
-    lastUsedAt: 'string | null',
+    createdAt: IsoDateTimeSchema,
+    lastUsedAt: IsoDateTimeSchema.or('null'),
 })
 export type Passkey = typeof PasskeySchema.infer
 

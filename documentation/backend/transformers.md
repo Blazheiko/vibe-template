@@ -26,14 +26,14 @@ flowchart LR
 
 Трансформери в [`app/transformers/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/index.ts) — це об'єкти з методами `serialize` / `serializeArray` (у push-підписок ще `serializeWithLogs` / `serializeArrayWithLogs`, у логів push — `serializeSummary`). Є `userTransformer`, `pushSubscriptionTransformer`, `pushNotificationLogTransformer` і `promptTransformer`. Вони:
 
-- приводять id до `string` через `toEntityId` з [`app/domain/ids.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts) (брендований id стає рядком на дроті, ADR 0007);
-- переводять `Date` у ISO-рядок UTC через `toISOString()` (формат `2026-10-25T10:00:00.000Z` не залежить від часового поясу процесу); `userTransformer` і `pushSubscriptionTransformer` ще перейменовують `createdAt`/`updatedAt` → `created_at`/`updated_at`;
+- приводять id до `EntityId` через `toEntityId` з [`app/domain/ids.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts) (брендований id стає рядком на дроті, ADR 0007; схеми відповідей оголошують його `EntityIdSchema`, feat-268);
+- переводять `Date` у ISO-рядок UTC: поля `*At`, які схема оголошує `IsoDateTimeSchema`, — через `toIsoDateTime` / `toIsoDateTimeOrNull` з `shared/brand`, решту — через `toISOString()`. Текст, який сервер отримав готовим (ISO із сесії, `timestamp` PostgreSQL, закодований курсор, публічний id сесії), брендують конструктори [`app/domain/wire.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/wire.ts) (формат `2026-10-25T10:00:00.000Z` не залежить від часового поясу процесу); `userTransformer` і `pushSubscriptionTransformer` ще перейменовують `createdAt`/`updatedAt` → `created_at`/`updated_at`;
 - прибирають чутливі поля: [user-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/user-transformer.ts) відкидає `password` і `sessionToken` (простір імен сесій у Redis, див. [Автентифікація](/backend/auth#що-таке-usertoken)) і додає похідне `emailVerified: boolean`.
 
 ```ts
 serialize(user: UserRow): SerializedUser {
     const { id, password: _password, sessionToken: _sessionToken, createdAt, updatedAt, emailVerifiedAt, ...rest } = user
-    return { ...rest, id: String(id), created_at: createdAt.toISOString(), /* ... */ }
+    return { ...rest, id: toEntityId(id), created_at: createdAt.toISOString(), /* ... */ }
 }
 ```
 

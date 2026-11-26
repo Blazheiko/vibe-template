@@ -1,4 +1,5 @@
 import type { NotificationItem } from 'shared/responses'
+import { toIsoDateTime, toIsoDateTimeOrNull } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 
 import type { NotificationRow } from '#app/repositories/index.js'
@@ -14,8 +15,8 @@ export const notificationTransformer = {
             category: row.category,
             params: row.params,
             link: row.link,
-            createdAt: row.createdAt.toISOString(),
-            readAt: row.readAt === null ? null : row.readAt.toISOString(),
+            createdAt: toIsoDateTime(row.createdAt),
+            readAt: toIsoDateTimeOrNull(row.readAt),
         } as NotificationItem
     },
 }

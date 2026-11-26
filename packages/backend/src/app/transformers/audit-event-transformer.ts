@@ -1,11 +1,9 @@
 import { AUDIT_ACTIONS, isAuditAction, type AuditProof, type AuditSystemSource } from 'shared/audit'
+import { isoDateTimeOfPgText } from '#app/domain/wire.js'
 import { toEntityId } from '#app/domain/ids.js'
 import type { AuditEvent } from 'shared/responses'
 
 import type { AuditEventListRow } from '#app/repositories/index.js'
-
-/** `occurred_at` as PostgreSQL printed it (UTC, no zone) in ISO 8601, microseconds kept. */
-export const occurredAtIso = (text: string): string => `${text.replace(' ', 'T')}Z`
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
     typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -27,7 +25,7 @@ export const auditEventTransformer = {
         const source = metadata?.['source']
         return {
             id: toEntityId(row.id),
-            occurredAt: occurredAtIso(row.occurredAt),
+            occurredAt: isoDateTimeOfPgText(row.occurredAt),
             action: row.action,
             group: AUDIT_ACTIONS[row.action].group,
             actor: {
@@ -42,7 +40,10 @@ export const auditEventTransformer = {
                         ? (source as AuditSystemSource)
                         : null,
             },
-            target: { type: AUDIT_ACTIONS[row.action].targetType, id: row.targetId },
+            target: {
+                type: AUDIT_ACTIONS[row.action].targetType,
+                id: row.targetId,
+            },
             targetUser:
                 targetUserId === null
                     ? null

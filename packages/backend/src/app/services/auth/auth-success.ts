@@ -1,4 +1,6 @@
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
+import { asIsoDateTime } from '#app/domain/wire.js'
+import type { IsoDateTime } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
@@ -16,7 +18,7 @@ export interface AuthSuccessPayload {
     wsToken: string
     csrfToken?: string
     /** feat-245 (Р8): set when the request's session is a recovery session (as main/init says). */
-    recovery?: { expiresAt: string; replaced: boolean }
+    recovery?: { expiresAt: IsoDateTime; replaced: boolean }
 }
 
 /**
@@ -60,7 +62,7 @@ export async function authSuccessPayload(
     const recovery = sessionInfo?.data.auth?.recovery
     if (recovery !== undefined) {
         payload.recovery = {
-            expiresAt: recovery.expiresAt,
+            expiresAt: asIsoDateTime(recovery.expiresAt),
             replaced: recovery.replacementFactor !== undefined,
         }
     }

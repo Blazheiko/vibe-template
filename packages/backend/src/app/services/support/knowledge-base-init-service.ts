@@ -1,5 +1,5 @@
 import { isServerRejection } from '#app/repositories/db-errors.js'
-import { ms } from 'shared/brand'
+import { ms, toIsoDateTime, type IsoDateTime } from 'shared/brand'
 import { access, readdir, readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,8 +48,8 @@ export interface KnowledgeBaseInitStatus {
     failedFiles: number
     progressPercent: number
     currentFile: string | null
-    startedAt: string | null
-    completedAt: string | null
+    startedAt: IsoDateTime | null
+    completedAt: IsoDateTime | null
     message: string | null
 }
 
@@ -160,7 +160,7 @@ export function createKnowledgeBaseInitService({
     const finish = (state: 'completed' | 'failed', message: string): void => {
         status.state = state
         status.currentFile = null
-        status.completedAt = new Date().toISOString()
+        status.completedAt = toIsoDateTime(new Date())
         status.message = message
     }
 
@@ -374,7 +374,7 @@ export function createKnowledgeBaseInitService({
 
             Object.assign(status, idleStatus(), {
                 state: 'running',
-                startedAt: new Date().toISOString(),
+                startedAt: toIsoDateTime(new Date()),
             })
             running = runInit(lock)
 

@@ -1,12 +1,14 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { CursorSchema, IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 import { RoleSchema } from '../access/role-schema.js'
 
 export const AdminUserListItemSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     name: 'string',
     email: 'string',
-    registeredAt: 'string',
+    registeredAt: IsoDateTimeSchema,
     // feat-241: the role, and whether the email is verified (a staff role needs it).
     role: RoleSchema,
     emailVerified: 'boolean',
@@ -19,7 +21,7 @@ export const AdminUserListResponseSchema = type.or(
         items: AdminUserListItemSchema.array(),
         total: 'number',
         /** The id to pass as `cursor` for the next page, or null on the last one. */
-        nextCursor: 'string | null',
+        nextCursor: CursorSchema.or('null'),
         hasMore: 'boolean',
     },
     CanonicalErrorResponseSchema,

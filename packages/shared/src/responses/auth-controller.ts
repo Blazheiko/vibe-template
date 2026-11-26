@@ -1,28 +1,32 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import type { ErrorCode as AppErrorCode } from '../errors/error-codes.js'
 import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type CanonicalErrorResponse } from './error-response.js'
 
 const AuthUserSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     name: 'string',
     'email?': 'string | null',
     'phone?': 'string | null',
     emailVerified: 'boolean',
-    'emailVerifiedAt?': 'string | null',
+    'emailVerifiedAt?': IsoDateTimeSchema.or('null'),
     'role?': RoleSchema,
     // The rest of userTransformer.serialize: the client keeps `avatar` from the login answer.
     'avatar?': 'string | null',
     'created_at?': 'string | null',
     'updated_at?': 'string | null',
 })
+/** The account as a sign-in, a registration or a contact change answers it (feat-268: the user store). */
+export type AuthUser = typeof AuthUserSchema.infer
 
 const PhoneChallengeResponseSchema = type.or(
     {
         status: "'success'",
         challengeId: 'string',
-        expiresAt: 'string',
-        resendAvailableAt: 'string',
+        expiresAt: IsoDateTimeSchema,
+        resendAvailableAt: IsoDateTimeSchema,
     },
     CanonicalErrorResponseSchema,
 )
@@ -88,8 +92,8 @@ export const ResetPhoneStartResponseSchema = type.or(
         status: "'success'",
         'message?': 'string',
         'challengeId?': 'string',
-        'expiresAt?': 'string',
-        'resendAvailableAt?': 'string',
+        'expiresAt?': IsoDateTimeSchema,
+        'resendAvailableAt?': IsoDateTimeSchema,
     },
     CanonicalErrorResponseSchema,
 )
@@ -114,7 +118,7 @@ export const LoginResponseSchema = type.or(
          * `continue` finished it): the client shows only the recovery wizard from the start, as
          * main/init says later. Absent for every other sign-in.
          */
-        'recovery?': { expiresAt: 'string', replaced: 'boolean' },
+        'recovery?': { expiresAt: IsoDateTimeSchema, replaced: 'boolean' },
     },
     // feat-245 (Р4): the first factor was right and the account has a second one; the second step
     // (POST /auth/mfa/verify) finishes the sign-in. The ticket travels in an HttpOnly cookie.
@@ -220,11 +224,11 @@ export type ResendVerificationEmailResponse = typeof ResendVerificationEmailResp
 
 // feat-199: the sign-in methods linked to the account (identities of OAuth providers).
 const SignInMethodSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     provider: 'string',
     /** The profile name the provider reported, when it is safe to show; null otherwise. */
     name: 'string | null',
-    linkedAt: 'string',
+    linkedAt: IsoDateTimeSchema,
 })
 export const GetSignInMethodsResponseSchema = type.or(
     {

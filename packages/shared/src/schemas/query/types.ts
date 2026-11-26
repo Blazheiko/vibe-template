@@ -3,11 +3,20 @@
 // number, while a client may pass a number and let the URL builder turn it into text.
 // `QueryInputOf` derives that type from the schema (feat-183): the keys and their optionality
 // come from the input of the schema, the value from what the schema hands to the handler.
+import type { Brand } from '../../brand/index.js'
+
 export type DateString = string
 export type PositiveIntInput = string | number
 
-/** A value as a client sends it: the parsed number, date or flag, or its text. */
-export type QueryWireValue<T> = T extends number
+/**
+ * A value as a client sends it: the parsed number, date or flag, or its text. A branded value
+ * (an `EntityId` the schema checked) is sent as its plain text (feat-268, plan Р8): the client
+ * writes a string, and the handler gets the brand from the parsed query.
+ */
+export type QueryWireValue<T> =
+    T extends Brand<infer Base, unknown> ? QueryWireValue<Base> : PlainWireValue<T>
+
+type PlainWireValue<T> = T extends number
     ? number | string
     : T extends Date
       ? DateString

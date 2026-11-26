@@ -1,4 +1,5 @@
 import { adminOnlineUsersService } from '#app/services/admin/admin-online-users-service.js'
+import { parseUserId, toEntityId } from '#app/domain/ids.js'
 import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-service.js'
 import { broadcastService } from '#app/services/communication/broadcast-service.js'
 import logger from '#logger'
@@ -42,10 +43,13 @@ async function broadcastOnlineToAdminsOnConnect(userId: string): Promise<void> {
 
 async function broadcastOnlineToAdminsOnDisconnect(userId: string): Promise<void> {
     if (!adminWsChannelService.hasSubscribers()) return
+    // The vendor event keeps the id as text (Р13); one that is not an id names no listed user.
+    const id = parseUserId(userId)
+    if (id === null) return
 
     try {
         broadcastService.broadcastMessageToChannel('admin', 'admin_user_online_remove', {
-            id: userId,
+            id: toEntityId(id),
         })
     } catch (error) {
         logger.error(

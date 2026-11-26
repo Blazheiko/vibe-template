@@ -1,7 +1,15 @@
 import { userOnlineRepository, userRepository } from '#app/repositories/index.js'
+import { asCursor } from '#app/domain/wire.js'
+import {
+    toIsoDateTime,
+    toIsoDateTimeOrNull,
+    type EntityId,
+    type IsoDateTime,
+    type Cursor,
+} from 'shared/brand'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
 import logger from '#vendor/utils/logger.js'
-import type { UserOnlineId, UserId } from '#app/domain/ids.js'
+import { type UserOnlineId, type UserId, toEntityId } from '#app/domain/ids.js'
 
 interface AdminOnlineHistoryFilters {
     userId?: UserId
@@ -12,13 +20,13 @@ interface AdminOnlineHistoryFilters {
 }
 
 export interface AdminOnlineHistoryItem {
-    id: string
-    userId: string
+    id: EntityId
+    userId: EntityId
     name: string
     email: string
     appType: 'web' | 'pwa' | null
-    connectedAt: string
-    disconnectedAt: string | null
+    connectedAt: IsoDateTime
+    disconnectedAt: IsoDateTime | null
     connectionDurationMs: number | null
     closeCode: number | null
     isFirstConnection: boolean
@@ -32,7 +40,7 @@ export const adminOnlineHistoryService = {
         items: AdminOnlineHistoryItem[]
         total: number
         limit: number
-        nextCursor: string | null
+        nextCursor: Cursor | null
         hasMore: boolean
     }> {
         // One row more than the page tells whether there is a next one; the repository does not
@@ -52,7 +60,7 @@ export const adminOnlineHistoryService = {
         const hasMore = rows.length > limit
         const pageRows = hasMore ? rows.slice(0, limit) : rows
         const lastRow = pageRows.at(-1)
-        const nextCursor = hasMore && lastRow !== undefined ? String(lastRow.id) : null
+        const nextCursor = hasMore && lastRow !== undefined ? asCursor(String(lastRow.id)) : null
         const userIds = Array.from(new Set(pageRows.map((row) => row.userId)))
         const users =
             userIds.length > 0 ? await userRepository.findAdminOnlineUsersByIds(userIds) : []
@@ -64,7 +72,7 @@ export const adminOnlineHistoryService = {
                     const user = usersById.get(String(row.userId))
                     if (user === undefined) {
                         logger.warn(
-                            { historyId: String(row.id), userId: String(row.userId) },
+                            { historyId: String(row.id), userId: toEntityId(row.userId) },
                             'admin_online_history: user not found for history row',
                         )
                         return null
@@ -78,13 +86,13 @@ export const adminOnlineHistoryService = {
                             : null
 
                     return {
-                        id: String(row.id),
-                        userId: String(row.userId),
+                        id: toEntityId(row.id),
+                        userId: toEntityId(row.userId),
                         name: user.name,
                         email: user.email,
                         appType: row.typeApp,
-                        connectedAt: row.connectedAt.toISOString(),
-                        disconnectedAt: disconnectedAt?.toISOString() ?? null,
+                        connectedAt: toIsoDateTime(row.connectedAt),
+                        disconnectedAt: toIsoDateTimeOrNull(disconnectedAt ?? null),
                         connectionDurationMs: storedDuration ?? fallbackDuration,
                         closeCode: row.closeCode,
                         isFirstConnection: row.isFirstConnection,

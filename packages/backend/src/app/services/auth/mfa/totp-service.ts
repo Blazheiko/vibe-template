@@ -1,4 +1,6 @@
 import { Result } from 'better-result'
+import { asIsoDateTime } from '#app/domain/wire.js'
+import type { IsoDateTime } from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { nanoid } from 'nanoid'
 import { PRODUCT } from 'shared/product'
@@ -102,7 +104,7 @@ export interface MfaStatus {
     recoveryCodesRemaining: number
     recoveryContact: boolean
     stepUpProofs: ('password' | 'totp' | 'webauthn')[]
-    recovery: { expiresAt: string; replaced: boolean } | null
+    recovery: { expiresAt: IsoDateTime; replaced: boolean } | null
     /** feat-248: the factor a staff role needs here; null without one. */
     staffFactor: StaffFactorMode | null
 }
@@ -152,7 +154,7 @@ export const totpService = {
                 recovery === undefined
                     ? null
                     : {
-                          expiresAt: recovery.expiresAt,
+                          expiresAt: asIsoDateTime(recovery.expiresAt),
                           replaced: recovery.replacementFactor !== undefined,
                       },
             staffFactor: staffFactorFor(user.role),

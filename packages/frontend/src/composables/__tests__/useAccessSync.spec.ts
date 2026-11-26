@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Role } from 'shared/access'
 
 import { useUserStore } from '@/stores/user'
+import { asEntityId, testUser } from '../../__tests__/brands'
 
 vi.mock('@/utils/api', () => ({ accountApi: { getAccess: vi.fn() } }))
 
@@ -28,7 +29,7 @@ describe('access sync', () => {
 
     beforeEach(() => {
         setActivePinia(createPinia())
-        useUserStore().setUser({ id: '1', role: 'admin' })
+        useUserStore().setUser(testUser({ id: asEntityId('1'), role: 'admin' }))
         replace.mockReset()
         path = { path: '/account', permission: undefined, staff: false }
     })
@@ -58,7 +59,7 @@ describe('access sync', () => {
         const answer = deferred()
         const reading = make(() => answer.promise).readAgain()
 
-        store.setUser({ id: '2', role: 'user' })
+        store.setUser(testUser({ id: asEntityId('2'), role: 'user' }))
         answer.resolve('admin')
         await reading
 
@@ -127,7 +128,7 @@ describe('access sync', () => {
         )
 
         // A new sign-in sets the user again: the admin area is tried again.
-        store.setUser({ id: '1', role: 'admin' })
+        store.setUser(testUser({ id: asEntityId('1'), role: 'admin' }))
         expect(store.staffMfaRefusal).toBeNull()
     })
 

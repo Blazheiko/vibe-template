@@ -9,6 +9,7 @@ import { effectScope, nextTick } from 'vue'
 import { resetProfileSaveForTests, useProfileSync } from '@/composables/useProfileSave'
 import { ACCOUNT_POINTER_KEY, accountCacheKey, useStateStore } from '../state'
 import { isNewerOrSameRevision, useUserStore } from '../user'
+import { asEntityId, asIsoDateTime, testUser } from '../../__tests__/brands'
 
 // feat-232 T9-T10 (Р2, Р6, Р10, Р12, Р13): the preferences the page shows, their cache and the
 // revision of the profile.
@@ -200,12 +201,12 @@ describe('profile revision (Р12)', () => {
         setActivePinia(createPinia())
         const users = useUserStore()
         users.setInitUser({
-            id: '7',
+            id: asEntityId('7'),
             name: 'Ann',
             email: 'ann@example.com',
             emailVerified: true,
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
+            createdAt: asIsoDateTime('2026-01-01T00:00:00.000Z'),
+            updatedAt: asIsoDateTime('2026-01-01T00:00:00.000Z'),
             preferences: prefs({ theme: 'dark' }),
             revision: '10',
         })
@@ -223,10 +224,10 @@ describe('profile revision (Р12)', () => {
     it('another user drops the profile of the previous one', () => {
         setActivePinia(createPinia())
         const users = useUserStore()
-        users.setUser({ id: '7' })
+        users.setUser(testUser({ id: asEntityId('7') }))
         users.applyProfile({ name: 'Ann', preferences: prefs({ theme: 'dark' }), revision: '50' })
 
-        users.setUser({ id: '8' })
+        users.setUser(testUser({ id: asEntityId('8') }))
 
         expect(users.profile).toBeNull()
         // Revision 1 of the new user is not "older" than 50 of the previous one.
@@ -265,12 +266,12 @@ describe('the start, with the real stores and useProfileSync', () => {
         const { state, users, scope } = start()
 
         users.setInitUser({
-            id: '7',
+            id: asEntityId('7'),
             name: 'Ann',
             email: 'ann@example.com',
             emailVerified: true,
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
+            createdAt: asIsoDateTime('2026-01-01T00:00:00.000Z'),
+            updatedAt: asIsoDateTime('2026-01-01T00:00:00.000Z'),
             preferences: prefs({ colorTheme: 'ocean' }),
             revision: '2',
         })
@@ -293,7 +294,7 @@ describe('the start, with the real stores and useProfileSync', () => {
 
     it('a sign-out shows the device look', async () => {
         const { state, users, scope } = start()
-        users.setUser({ id: '7' })
+        users.setUser(testUser({ id: asEntityId('7') }))
         await nextTick()
 
         users.clearUser()

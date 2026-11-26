@@ -6,7 +6,7 @@
 // No # imports in app/domain (plan Р3, Р10): database/schema.ts may import these modules with a
 // relative path, and drizzle-kit loads the schema without the aliases.
 
-import { isValidEntityId } from 'shared/brand'
+import { isValidEntityId, type EntityId } from 'shared/brand'
 
 import type {
     AuditEventId,
@@ -129,4 +129,4 @@ export const parseSmsChallengeId = (raw: string | null | undefined): SmsChalleng
     typeof raw === 'string' && /^[\w-]{1,24}$/.test(raw) ? (raw as SmsChallengeId) : null
 
 /** The decimal text of a row id, as it goes into a response, a session or a WS payload. */
-export const toEntityId = (id: bigint): string => String(id)
+export const toEntityId = (id: bigint): EntityId => String(id) as EntityId

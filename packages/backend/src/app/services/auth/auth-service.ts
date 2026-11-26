@@ -1,4 +1,5 @@
 import { hashPassword, validatePassword } from 'metautil'
+import { toIsoDateTime, type IsoDateTime } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import { presentedSessionTokenOf, type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import { Result } from 'better-result'
@@ -452,8 +453,8 @@ export const authService = {
         AppResult<{
             status: 'success'
             challengeId: string
-            expiresAt: string
-            resendAvailableAt: string
+            expiresAt: IsoDateTime
+            resendAvailableAt: IsoDateTime
         }>
     > {
         const gateResult = assertPhoneAuthEnabled()
@@ -516,8 +517,8 @@ export const authService = {
         return Result.ok({
             status: 'success',
             challengeId: issuedChallengeResult.value.id,
-            expiresAt: issuedChallengeResult.value.expiresAt.toISOString(),
-            resendAvailableAt: issuedChallengeResult.value.resendAvailableAt.toISOString(),
+            expiresAt: toIsoDateTime(issuedChallengeResult.value.expiresAt),
+            resendAvailableAt: toIsoDateTime(issuedChallengeResult.value.resendAvailableAt),
         })
     },
 
@@ -662,8 +663,8 @@ export const authService = {
         AppResult<{
             status: 'success'
             challengeId: string
-            expiresAt: string
-            resendAvailableAt: string
+            expiresAt: IsoDateTime
+            resendAvailableAt: IsoDateTime
         }>
     > {
         const gateResult = assertPhoneAuthEnabled()
@@ -753,8 +754,8 @@ export const authService = {
         return Result.ok({
             status: 'success',
             challengeId: issuedChallengeResult.value.id,
-            expiresAt: issuedChallengeResult.value.expiresAt.toISOString(),
-            resendAvailableAt: issuedChallengeResult.value.resendAvailableAt.toISOString(),
+            expiresAt: toIsoDateTime(issuedChallengeResult.value.expiresAt),
+            resendAvailableAt: toIsoDateTime(issuedChallengeResult.value.resendAvailableAt),
         })
     },
 

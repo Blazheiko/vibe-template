@@ -1,4 +1,5 @@
 import type { PushNotificationLogRow, PushSubscriptionLogSummary } from '#app/repositories/index.js'
+import { toIsoDateTime, type EntityId, type IsoDateTime } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 
 // Wire shape of push_notifications_log rows (feat-047): ids as strings, sentAt as an ISO
@@ -10,10 +11,10 @@ export type SerializedPushNotificationLog = Omit<
     PushNotificationLogRow,
     'id' | 'userId' | 'subscriptionId' | 'sentAt' | 'errorMessage' | 'responseData'
 > & {
-    id: string
-    userId: string | null
-    subscriptionId: string | null
-    sentAt: string
+    id: EntityId
+    userId: EntityId | null
+    subscriptionId: EntityId | null
+    sentAt: IsoDateTime
     statusCode: number | null
     reason: PushDeliveryReason | null
 }
@@ -28,8 +29,8 @@ function deliveryReason(
 }
 
 export type SerializedPushLogSummary = Omit<PushSubscriptionLogSummary, 'id' | 'sentAt'> & {
-    id: string
-    sentAt: string
+    id: EntityId
+    sentAt: IsoDateTime
 }
 
 export const pushNotificationLogTransformer = {
@@ -50,7 +51,7 @@ export const pushNotificationLogTransformer = {
             id: toEntityId(id),
             userId: userId === null ? null : toEntityId(userId),
             subscriptionId: subscriptionId === null ? null : toEntityId(subscriptionId),
-            sentAt: sentAt.toISOString(),
+            sentAt: toIsoDateTime(sentAt),
             statusCode,
             reason: deliveryReason(rest.status, statusCode),
         }
@@ -62,6 +63,6 @@ export const pushNotificationLogTransformer = {
 
     serializeSummary(log: PushSubscriptionLogSummary): SerializedPushLogSummary {
         const { id, sentAt, ...rest } = log
-        return { ...rest, id: toEntityId(id), sentAt: sentAt.toISOString() }
+        return { ...rest, id: toEntityId(id), sentAt: toIsoDateTime(sentAt) }
     },
 }

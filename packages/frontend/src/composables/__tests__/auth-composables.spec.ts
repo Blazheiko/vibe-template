@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import { asEntityId, testUser } from '../../__tests__/brands'
 
 // feat-076 (J): what every auth form does around a request, and what a sign-in does, once.
 
@@ -74,7 +75,7 @@ describe('useAuthRequest', () => {
 describe('useCompleteSignIn', () => {
     const signIn = async (): Promise<void> => {
         const { useCompleteSignIn } = await import('../useCompleteSignIn')
-        useCompleteSignIn(() => calls.push('onSignedIn'))({ id: '1' })
+        useCompleteSignIn(() => calls.push('onSignedIn'))(testUser({ id: asEntityId('1') }))
         await Promise.resolve()
         await Promise.resolve()
     }
@@ -97,7 +98,7 @@ describe('useCompleteSignIn', () => {
         await signIn()
 
         expect(calls).toEqual(['setUser', 'onSignedIn', 'push', 'init_app'])
-        expect(setUser).toHaveBeenCalledWith({ id: '1' })
+        expect(setUser).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }))
         expect(push).toHaveBeenCalledWith({ name: 'UserAccount' })
         expect(emit).toHaveBeenCalledWith('init_app')
     })
@@ -143,7 +144,7 @@ describe('useCompleteSignIn', () => {
         })
         route.query = { redirect: '/support' }
         const { useCompleteSignIn } = await import('../useCompleteSignIn')
-        useCompleteSignIn(() => calls.push('onSignedIn'))({ id: '1' })
+        useCompleteSignIn(() => calls.push('onSignedIn'))(testUser({ id: asEntityId('1') }))
         await Promise.resolve()
 
         expect(calls).toEqual(['setUser', 'onSignedIn', 'push'])

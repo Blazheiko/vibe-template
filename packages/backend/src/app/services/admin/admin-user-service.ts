@@ -1,14 +1,16 @@
 import { userRepository } from '#app/repositories/index.js'
+import { asCursor } from '#app/domain/wire.js'
+import { toIsoDateTime, type EntityId, type IsoDateTime, type Cursor } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 import type { AdminUserListFilters } from '#app/repositories/index.js'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
 import type { Role } from 'shared/access'
 
 export interface AdminUserListItem {
-    id: string
+    id: EntityId
     name: string
     email: string
-    registeredAt: string
+    registeredAt: IsoDateTime
     role: Role
     emailVerified: boolean
 }
@@ -16,7 +18,7 @@ export interface AdminUserListItem {
 export interface AdminUserListPage {
     items: AdminUserListItem[]
     total: number
-    nextCursor: string | null
+    nextCursor: Cursor | null
     hasMore: boolean
 }
 
@@ -36,12 +38,12 @@ export const adminUserService = {
                 id: toEntityId(user.id),
                 name: user.name,
                 email: user.email ?? '',
-                registeredAt: user.createdAt.toISOString(),
+                registeredAt: toIsoDateTime(user.createdAt),
                 role: user.role,
                 emailVerified: user.emailVerifiedAt !== null,
             })),
             total: result.total,
-            nextCursor: hasMore && lastRow !== undefined ? String(lastRow.id) : null,
+            nextCursor: hasMore && lastRow !== undefined ? asCursor(String(lastRow.id)) : null,
             hasMore,
         }
     },

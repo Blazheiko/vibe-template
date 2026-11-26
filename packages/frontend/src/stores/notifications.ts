@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { toIsoDateTime } from 'shared/brand'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import type { NotificationItem } from 'shared'
 import { NOTIFICATIONS_UNREAD_COUNT_CAP } from 'shared/notifications'
@@ -246,7 +247,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const markLocallyRead = (ids: (id: string) => boolean): void => {
         pageSeq = Math.max(pageSeq, seq)
         panelSeq = Math.max(panelSeq, seq)
-        const now = new Date().toISOString()
+        const now = toIsoDateTime(new Date())
         const mark = (list: NotificationItem[]): NotificationItem[] =>
             list.map((item) =>
                 item.readAt === null && ids(item.id) ? { ...item, readAt: now } : item,

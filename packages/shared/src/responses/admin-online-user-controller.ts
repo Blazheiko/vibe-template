@@ -1,9 +1,11 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 export const AdminOnlineUserListItemSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     name: 'string',
     email: 'string',
     appType: "'web' | 'pwa'",
@@ -21,12 +23,12 @@ export const AdminOnlineUserConnectionSchema = type({
 export type AdminOnlineUserConnection = typeof AdminOnlineUserConnectionSchema.infer
 
 export const AdminOnlineUserDetailSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     name: 'string',
     email: 'string',
     phone: 'string | null',
     role: RoleSchema,
-    createdAt: 'string',
+    createdAt: IsoDateTimeSchema,
     isOnline: 'boolean',
     appType: "'web' | 'pwa' | null",
     userAgent: 'string | null',

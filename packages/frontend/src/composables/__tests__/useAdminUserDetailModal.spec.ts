@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useUserStore } from '@/stores/user'
+import { asEntityId, testUser } from '../../__tests__/brands'
 
 // feat-242 (review 2026-11-21): the details of a user (phone, IP) need users.sensitive.read;
 // losing it hides them, and an answer started under the old rights is dropped.
@@ -25,7 +26,7 @@ const setup = () => {
 describe('useAdminUserDetailModal', () => {
     beforeEach(() => {
         setActivePinia(createPinia())
-        useUserStore().setUser({ id: '1', role: 'admin' })
+        useUserStore().setUser(testUser({ id: asEntityId('1'), role: 'admin' }))
         api.getById.mockReset()
     })
 
@@ -62,7 +63,7 @@ describe('useAdminUserDetailModal', () => {
     })
 
     it('opens nothing without users.sensitive.read', async () => {
-        useUserStore().setUser({ id: '1', role: 'support_operator' })
+        useUserStore().setUser(testUser({ id: asEntityId('1'), role: 'support_operator' }))
         const modal = setup()
         await modal.openUserModal('7')
         expect(api.getById).not.toHaveBeenCalled()

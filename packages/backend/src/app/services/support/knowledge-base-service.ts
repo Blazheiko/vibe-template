@@ -1,5 +1,6 @@
 import { isServerRejection } from '#app/repositories/db-errors.js'
-import type { SupportArticleId } from '#app/domain/ids.js'
+import { toIsoDateTime, type EntityId, type IsoDateTime } from 'shared/brand'
+import { type SupportArticleId, toEntityId } from '#app/domain/ids.js'
 import { randomUUID } from 'node:crypto'
 import type { UploadedFile } from '#vendor/types/types.js'
 import appConfig from '#config/app.js'
@@ -98,7 +99,7 @@ const beforeCommit = async <T>(work: () => Promise<T>): Promise<T> => {
 }
 
 export interface KbItemData {
-    id: string
+    id: EntityId
     title: string
     content: string
     category: string | null
@@ -106,13 +107,13 @@ export interface KbItemData {
     hasScreenshot: boolean
     screenshotKey: string | null
     embeddingIndexed: boolean
-    createdAt: string
-    updatedAt: string
+    createdAt: IsoDateTime
+    updatedAt: IsoDateTime
 }
 
 function rowToData(row: KbArticleRow | (KbRow & { embeddingIndexed: boolean })): KbItemData {
     return {
-        id: String(row.id),
+        id: toEntityId(row.id),
         title: row.title,
         content: row.content,
         category: row.category,
@@ -120,8 +121,8 @@ function rowToData(row: KbArticleRow | (KbRow & { embeddingIndexed: boolean })):
         hasScreenshot: row.screenshotKey !== null,
         screenshotKey: row.screenshotKey,
         embeddingIndexed: row.embeddingIndexed,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
+        createdAt: toIsoDateTime(row.createdAt),
+        updatedAt: toIsoDateTime(row.updatedAt),
     }
 }
 

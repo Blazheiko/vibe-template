@@ -1,4 +1,6 @@
 import type { ResponseData, SessionInfo } from '#vendor/types/types.js'
+import { asIsoDateTime } from '#app/domain/wire.js'
+import { toIsoDateTime, toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
 import { toEntityId, asUserId } from '#app/domain/ids.js'
 import { userRepository } from '#app/repositories/index.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
@@ -19,16 +21,16 @@ interface StorageConfigPayload {
 }
 
 interface InitUserPayload {
-    id: string
+    id: EntityId
     name: string
     email: string
     phone: string | null
     emailVerified: boolean
-    emailVerifiedAt: string | null
+    emailVerifiedAt: IsoDateTime | null
     avatar: string | null
     role: Role
-    createdAt: string
-    updatedAt: string
+    createdAt: IsoDateTime
+    updatedAt: IsoDateTime
     preferences: ProfilePreferences
     revision: string
 }
@@ -65,7 +67,7 @@ export const mainService = {
             csrfToken?: string
             user: InitUserPayload
             /** feat-245 (Р8): set in a recovery session; the client shows only the recovery wizard. */
-            recovery?: { expiresAt: string; replaced: boolean }
+            recovery?: { expiresAt: IsoDateTime; replaced: boolean }
             wsUrl: string
             /** Null in a recovery session (Р8): it opens no WebSocket. */
             wsToken: string | null
@@ -108,12 +110,11 @@ export const mainService = {
                 email: user.email ?? '',
                 phone: user.phone ?? null,
                 emailVerified: user.emailVerifiedAt !== null,
-                emailVerifiedAt:
-                    user.emailVerifiedAt === null ? null : user.emailVerifiedAt.toISOString(),
+                emailVerifiedAt: toIsoDateTimeOrNull(user.emailVerifiedAt),
                 avatar: user.avatar ?? null,
                 role: user.role,
-                createdAt: user.createdAt.toISOString(),
-                updatedAt: user.updatedAt.toISOString(),
+                createdAt: toIsoDateTime(user.createdAt),
+                updatedAt: toIsoDateTime(user.updatedAt),
                 preferences: profile.value.preferences,
                 revision: profile.value.revision,
             },
@@ -122,7 +123,7 @@ export const mainService = {
             ...(recovery !== undefined
                 ? {
                       recovery: {
-                          expiresAt: recovery.expiresAt,
+                          expiresAt: asIsoDateTime(recovery.expiresAt),
                           replaced: recovery.replacementFactor !== undefined,
                       },
                   }
