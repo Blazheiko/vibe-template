@@ -2711,7 +2711,7 @@
             "owner": "Blazheiko",
             "branch": "fix/branded-types-session-gaps",
             "dependencies": ["feat-271"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
