@@ -29,9 +29,11 @@ Plan: `docs/plan/vendor-cleanup-plan.md`. Branch: `chore/vendor-cleanup`.
   3952 passed, frontend 1029, landing 103, api-playground 115.
 - `pnpm --filter backend build` exit 0.
 - `pnpm docs:build && pnpm docs:verify`: `verify-dist: all checks passed`.
-- `make test-pg` / `make test-redis`: no DB or Redis code changed (only an import in
-  `rate-limit-store.ts`); evidence is the CI jobs `test-pg` / `test-redis` of the PR (links added
-  once green).
+- CI on 98dd85a (PR #897): test-pg 72 files / 724 passed, 0 skipped
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46021487579/job/140581967141);
+  test-redis 22 files / 231 passed, 0 skipped
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46021487625/job/140581967206);
+  quality, e2e, e2e-live, build green.
 
 ### Negative lint check (temporary violations, reverted)
 
