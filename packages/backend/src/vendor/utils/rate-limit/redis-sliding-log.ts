@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Redis } from 'ioredis'
-import { ms } from 'shared/brand'
+import { ms, type Milliseconds } from 'shared/brand'
+import { msArg } from '#vendor/utils/redis/redis-ttl.js'
 import type { RateLimitDecision } from './rate-limit-store.js'
 
 // Sliding log on a ZSET with the semantics of the in-memory store: rejected
@@ -27,7 +28,8 @@ return {0, math.ceil(resetAt - now), math.ceil(resetAt)}
 `
 
 export interface SlidingLogOptions {
-    windowMs: number
+    /** feat-272 (Р7): the window, as the script's PEXPIRE and its scores take it. */
+    windowMs: Milliseconds
     max: number
 }
 
@@ -43,7 +45,7 @@ export async function consumeRedisSlidingLog(
         SLIDING_LOG_LUA,
         1,
         key,
-        String(windowMs),
+        msArg(windowMs),
         String(max),
         nonce,
     )) as [number, number, number]

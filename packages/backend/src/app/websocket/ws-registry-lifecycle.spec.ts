@@ -136,6 +136,18 @@ beforeEach(() => {
 })
 
 describe('connection registry lifecycle (feat-107)', () => {
+    // feat-272 (Р13): an id that is not a row id is logged and its socket closed, never left open.
+    it.each(['abc', '0', '007'])(
+        'a socket whose user id is %j is closed and not registered',
+        async (userId) => {
+            const conn = connection(userId)
+            await websocketCoordinator.handleConnected(conn.ws, conn.userData)
+            expect(conn.endedWith).toHaveLength(1)
+            expect(wsConnectionRegistry.getConnection(userId, conn.userData.uuid)).toBeUndefined()
+            expect(accessReads()).toBe(0)
+        },
+    )
+
     it('a socket that closes while its role is read is never registered', async () => {
         const conn = connection('9101')
 

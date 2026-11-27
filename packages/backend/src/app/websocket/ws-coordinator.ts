@@ -57,9 +57,25 @@ const drainDisconnects = async (timeoutMs: number): Promise<boolean> => {
 const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promise<void> => {
     const { userId, sessionId } = userData
     if (userId === undefined || sessionId === undefined) return
-    // feat-271 (Р13): the id the upgrade checked, read by its brand constructor once.
+    // feat-271 (Р13): the id the upgrade checked, read by its brand constructor once. feat-272:
+    // one that is not a row id is logged and its socket closed, as a revoked session is; a bare
+    // return would leave an unregistered socket open.
     const ownerId = parseUserId(userId)
-    if (ownerId === null) return
+    if (ownerId === null) {
+        logger.warn(
+            { socketUuid: userData.uuid },
+            'WS connection closed at connect: its user id is not a row id',
+        )
+        try {
+            endSessionExpired(ws)
+        } catch (err) {
+            logger.error(
+                { err, socketUuid: userData.uuid },
+                'Error closing a WS with a bad user id',
+            )
+        }
+        return
+    }
     const connectedAt = new Date()
 
     // feat-210: until the reads below answer, the connection is in no list a revocation closes.
@@ -105,7 +121,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         revokedMeanwhile ||
         !sessionStored ||
         access === undefined ||
-        access.sessionToken !== userData.userToken
+        access.sessionToken !== userToken
     ) {
         logger.info(
             { userId, socketUuid: userData.uuid },

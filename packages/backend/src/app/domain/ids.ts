@@ -132,7 +132,6 @@ export const parseAuditEventId = (raw: string | null | undefined): AuditEventId 
 export const parseSmsChallengeId = (raw: string | null | undefined): SmsChallengeId | null =>
     typeof raw === 'string' && /^[\w-]{1,24}$/.test(raw) ? (raw as SmsChallengeId) : null
 
-/** The decimal text of a row id, as it goes into a response, a session or a WS payload. */
 /**
  * The id of any table row (feat-272): the bigint brands of database/ids.ts. A bare bigint (0n,
  * -1n, 2n ** 63n) is none, so `toEntityId` cannot make an EntityId the shared validator refuses.
@@ -154,4 +153,5 @@ export type RowId =
     | UserId
     | UserOnlineId
 
+/** The decimal text of a row id, as it goes into a response, a session or a WS payload. */
 export const toEntityId = (id: RowId): EntityId => String(id) as EntityId

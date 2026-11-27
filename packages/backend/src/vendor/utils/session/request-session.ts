@@ -10,7 +10,14 @@ import type {
     SessionDevice,
     SessionInfo,
 } from '#vendor/types/types.js'
-import { isValidEntityId, nowUnixMs, seconds, unixSecondsOf, type UnixSeconds } from 'shared/brand'
+import {
+    isValidEntityId,
+    nowUnixMs,
+    seconds,
+    unixSecondsOf,
+    type Seconds,
+    type UnixSeconds,
+} from 'shared/brand'
 import { USER_AGENT_MAX_LENGTH } from 'shared/utils'
 import sessionConfig from '#config/session.js'
 import {
@@ -590,7 +597,7 @@ export class RequestSession {
     private async prepareLogin(
         plan: LoginPlan,
         completionId: string,
-        ttlSeconds: number,
+        ttlSeconds: Seconds,
     ): Promise<'created' | 'exists' | 'conflict'> {
         return preparePendingSession(
             this.planRecord(plan, completionId, true),

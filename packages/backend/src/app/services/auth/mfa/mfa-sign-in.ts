@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { addMs, toMs, nowUnixMs, type UnixMs } from 'shared/brand'
+import { addMs, toMs, nowUnixMs, seconds, type UnixMs } from 'shared/brand'
 import { normalizeEmail } from '#app/domain/email.js'
 import {
     mfaBindValueOf,
@@ -581,7 +581,8 @@ async function attempt(
                 )
             }
 
-            const ttl = Math.max(1, await mfaTicketStore.ttl(ticketId))
+            // feat-272 (Р7): the ticket's remaining lifetime stays Seconds up to the record.
+            const ttl = seconds(Math.max(1, await mfaTicketStore.ttl(ticketId)))
             const prepared = await context.auth.prepareLogin(plan, completionId, ttl)
             if (prepared === 'conflict') throw new Error('pending session conflict')
 

@@ -88,7 +88,7 @@ import {
     startSecondStepIfRequired,
     type SecondStepRequired,
 } from '#app/services/auth/mfa/mfa-sign-in.js'
-import { toEntityId, asUserId, type UserId, type SmsChallengeId } from '#app/domain/ids.js'
+import { toEntityId, parseUserId, type UserId, type SmsChallengeId } from '#app/domain/ids.js'
 
 interface GenericAcceptedPayload {
     status: 'success'
@@ -1106,7 +1106,8 @@ export const authService = {
             return Result.err(internalMessage('Failed to log out user'))
         }
         if (signedInUserId !== null && options.pushEndpoint !== undefined) {
-            await releasePushRecord(asUserId(signedInUserId), options.pushEndpoint)
+            const owner = parseUserId(signedInUserId)
+            if (owner !== null) await releasePushRecord(owner, options.pushEndpoint)
         }
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
@@ -1168,12 +1169,15 @@ export const authService = {
         actor: UserAuditActor,
     ): Promise<AppResult<{ status: 'success'; deletedCount: number; csrfToken: string }>> {
         const userId = auth.getUserId()
+        // feat-272 (Р13, T15): read once by its brand constructor (getUserId already refuses a
+        // non-row id; this keeps a throwing asUserId off the session boundary).
+        const owner = parseUserId(userId)
         // ADR 0002: rotating the sessionToken is the revocation. It comes first and its
         // failure fails the request; auth.logoutAll() below only deletes the records,
         // and every one of them is already rejected if that step fails.
         // feat-096: only while the session that asked is still current; a request let in
         // before a revocation must not rotate the owner's new token away.
-        if (userId !== null) {
+        if (owner !== null) {
             const presented = presentedSessionTokenOf(auth.getPresentedUserToken())
             // feat-109: the pending password-reset links are retired with the rotation, in one
             // transaction: "log out everywhere" also ends a reset somebody else asked for.
@@ -1182,7 +1186,7 @@ export const authService = {
                     ? undefined
                     : await withTransaction(async (tx) => {
                           const done = await userRepository.updateIfSessionToken(
-                              asUserId(userId),
+                              owner,
                               presented,
                               { sessionToken: newSessionToken() },
                               tx,
@@ -1210,7 +1214,7 @@ export const authService = {
                           return { done, events }
                       })
             if (rotated === undefined) {
-                const current = await userRepository.findSessionToken(asUserId(userId))
+                const current = await userRepository.findSessionToken(owner)
                 return Result.err(
                     current === undefined ? notFound('User', 'User not found') : sessionRevoked(),
                 )
@@ -1218,7 +1222,7 @@ export const authService = {
             auditService.logCommitted(actor.logger, rotated.events)
         }
         // feat-195: every session is revoked, so every WebSocket connection of the user closes.
-        if (userId !== null) wsSessionRevocation.closeUserConnections(userId)
+        if (owner !== null) wsSessionRevocation.closeUserConnections(String(owner))
         // The sessions are revoked by now; what follows is memory cleanup and must not turn
         // the answer into an error. auth.logoutAll() issues the anonymous session either way.
         let deletedCount = 0
@@ -1236,7 +1240,7 @@ export const authService = {
             // from the logger transport.
             logger.error({ err, userId }, 'Logout-all: deleting the session records failed')
         }
-        if (userId !== null) userNotificationService.security(asUserId(userId), 'logout_all')
+        if (owner !== null) userNotificationService.security(owner, 'logout_all')
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
         if (csrfToken === undefined) {

@@ -70,9 +70,12 @@ export const hashOtpCode = (key: string, code: OtpCode): OtpHash => hmac(key, co
 
 /** Whether `code` is the one `expected` was made from; constant time. */
 export function otpCodeMatches(key: string, code: OtpCode, expected: OtpHash): boolean {
-    const actual = hashOtpCode(key, code)
-    if (actual.length !== expected.length) return false
-    return timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'))
+    // feat-272: the decoded lengths are compared, not the texts: a stored value of the right
+    // length that is not hex decodes shorter, and timingSafeEqual would throw on it.
+    const actualBuf = Buffer.from(hashOtpCode(key, code), 'hex')
+    const expectedBuf = Buffer.from(expected, 'hex')
+    if (actualBuf.length !== expectedBuf.length) return false
+    return timingSafeEqual(actualBuf, expectedBuf)
 }
 
 /**
