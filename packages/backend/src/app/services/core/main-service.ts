@@ -140,7 +140,7 @@ export const mainService = {
     },
 
     setHeaderAndCookie(responseData: ResponseData): { status: 'ok' } {
-        responseData.headers.push({ name: 'test-header', value: 'test' })
+        responseData.setHeader('test-header', 'test')
         responseData.setCookie({
             name: 'cookieTest1',
             value: 'test',
