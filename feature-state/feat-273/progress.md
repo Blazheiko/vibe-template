@@ -17,3 +17,9 @@ Branch: `fix/branded-types-final-gaps`. Status: implementation done, PR open. Th
 - `pnpm docs:build && pnpm docs:verify`: passed. `db:generate`: no schema changes.
 - New regression tests fail without the fixes (OTP hash suffix).
 - PG suite: CI `test-pg`.
+
+## Review of #889 (REQUEST CHANGES, test-pg)
+
+- Four PG tests (`mfa-reset.pg.test.ts`, `privileged-session-lock-timeout.pg.test.ts`) still expected `String(id)` from `closeUserConnections`; they now expect the `UserId`. The unit specs had been updated, the PG suites are not run locally (no Postgres of this project), so CI caught them.
+- `UserConnection.staffAccessDeadline` is `UnixMs` (always finite, absent while the rule is off); its comment no longer mentions Infinity.
+- The timeout while deleting a test user in the same CI run: checked again on the next run (see below).
