@@ -20,7 +20,7 @@ import type { NormalizedEmail } from '#app/domain/email.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { invalidatePendingPhoneChallenges } from '#app/services/auth/phone-challenges.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
-import { toEntityId, type UserId } from '#app/domain/ids.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-097: an account whose address was never verified may have been created by somebody
 // who does not own that mailbox. The first proof of owning the mailbox (an authoritative
@@ -52,7 +52,7 @@ export async function destroySessionsQuietly(
     previousSessionToken: SessionToken,
     userId: UserId,
 ): Promise<void> {
-    wsSessionRevocation.closeUserConnections(toEntityId(userId))
+    wsSessionRevocation.closeUserConnections(userId)
     try {
         const cleanup = await destroyAllSessions(previousSessionToken)
         if (!cleanup.complete) {

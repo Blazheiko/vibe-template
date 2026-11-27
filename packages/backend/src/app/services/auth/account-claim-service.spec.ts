@@ -307,7 +307,7 @@ describe('destroySessionsQuietly', () => {
 
         await destroySessionsQuietly('old-token' as SessionToken, uid(5))
 
-        expect(mocks.closeUserConnections).toHaveBeenCalledWith('5')
+        expect(mocks.closeUserConnections).toHaveBeenCalledWith(5n)
         expect(order).toEqual(['close sockets', 'delete records'])
     })
 
@@ -316,7 +316,7 @@ describe('destroySessionsQuietly', () => {
 
         await destroySessionsQuietly('old-token' as SessionToken, uid(5))
 
-        expect(mocks.closeUserConnections).toHaveBeenCalledWith('5')
+        expect(mocks.closeUserConnections).toHaveBeenCalledWith(5n)
     })
 
     it('only logs a failure: the committed operation stands', async () => {

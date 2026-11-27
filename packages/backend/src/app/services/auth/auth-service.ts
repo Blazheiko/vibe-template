@@ -1098,8 +1098,9 @@ export const authService = {
             if (err instanceof SessionDeletionDeferredError) return Result.err(logoutRetry())
             throw err
         }
-        if (userId !== null && sessionId !== undefined) {
-            wsSessionRevocation.closeUserConnections(userId, { sessionId: sessionIdOf(sessionId) })
+        const owner = parseUserId(userId)
+        if (owner !== null && sessionId !== undefined) {
+            wsSessionRevocation.closeUserConnections(owner, { sessionId: sessionIdOf(sessionId) })
         }
 
         if (!result) {
@@ -1222,7 +1223,7 @@ export const authService = {
             auditService.logCommitted(actor.logger, rotated.events)
         }
         // feat-195: every session is revoked, so every WebSocket connection of the user closes.
-        if (owner !== null) wsSessionRevocation.closeUserConnections(String(owner))
+        if (owner !== null) wsSessionRevocation.closeUserConnections(owner)
         // The sessions are revoked by now; what follows is memory cleanup and must not turn
         // the answer into an error. auth.logoutAll() issues the anonymous session either way.
         let deletedCount = 0
@@ -1365,7 +1366,7 @@ export const authService = {
         // renewal the client replaces the socket with the new WS token, and the re-check closes
         // whatever is left (its token is rotated), as it does for another instance.
         wsSessionRevocation.closeUserConnections(
-            String(userId),
+            userId,
             requestingSessionId === undefined
                 ? {}
                 : { exceptSessionId: sessionIdOf(requestingSessionId) },

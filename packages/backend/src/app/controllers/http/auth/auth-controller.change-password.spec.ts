@@ -165,7 +165,7 @@ describe('AuthController.changePassword', () => {
         const response = await AuthController.changePassword(createContext())
 
         expect(response).toEqual({ status: 'success', sessionRenewed: false })
-        expect(closeUserConnections).toHaveBeenCalledWith('7', { sessionId: 's1' })
+        expect(closeUserConnections).toHaveBeenCalledWith(7n, { sessionId: 's1' })
     })
 
     it('closes nothing itself when the password change fails', async () => {

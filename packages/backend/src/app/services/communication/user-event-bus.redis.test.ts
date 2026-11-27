@@ -1,4 +1,4 @@
-import type { SessionToken } from '#app/domain/secrets.js'
+import { type SessionToken, sessionIdOf } from '#app/domain/secrets.js'
 import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import type { Profile } from 'shared'
@@ -227,7 +227,13 @@ describe.skipIf(!hasRedis)('user event bus across instances', () => {
         } as unknown as UserConnection
         const ws = { getUserData: () => userData } as unknown as MyWebSocket
         const connections: ListedConnection[] = [
-            { userId: '7', uuid: 'conn-b', ws, sessionId, userToken: userToken as SessionToken },
+            {
+                userId: '7',
+                uuid: 'conn-b',
+                ws,
+                sessionId: sessionIdOf(sessionId),
+                userToken: userToken as SessionToken,
+            },
         ]
         const syncB = createWsSessionAuthSync({
             listUserConnections: (userId) => (userId === '7' ? connections : []),

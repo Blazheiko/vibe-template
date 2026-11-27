@@ -1,5 +1,5 @@
 import type { MyWebSocket } from '#vendor/types/types.js'
-import type { SessionToken } from '#app/domain/secrets.js'
+import type { SessionId, SessionToken } from '#app/domain/secrets.js'
 
 // feat-107: each connection keeps its own ip, user agent and app type, so summaries never read
 // ws.getUserData() from a stored socket (it throws once the socket has closed).
@@ -8,7 +8,7 @@ interface StoredConnection {
     ip: string
     userAgent: string
     appType: 'web' | 'pwa'
-    sessionId: string
+    sessionId: SessionId
     userToken: SessionToken | undefined
 }
 
@@ -28,7 +28,7 @@ export interface ConnectionMeta {
     userAgent: string
     appType: 'web' | 'pwa'
     /** The session the connection was opened from, and the users.session_token it carried. */
-    sessionId: string
+    sessionId: SessionId
     userToken: SessionToken | undefined
 }
 
@@ -36,7 +36,7 @@ export interface ListedConnection {
     userId: string
     uuid: string
     ws: MyWebSocket
-    sessionId: string
+    sessionId: SessionId
     userToken: SessionToken | undefined
 }
 
@@ -55,7 +55,7 @@ function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa
 // would miss them; it marks them here instead, and handleConnected closes a marked one.
 interface ConnectingEntry {
     userId: string
-    sessionId: string
+    sessionId: SessionId
     /** The users.session_token the connection's session carries (a recovery's close, Р8). */
     userToken: SessionToken | undefined
     revoked: boolean
@@ -72,7 +72,7 @@ const connecting = new Map<string, ConnectingEntry>()
 const beginConnecting = (
     userId: string,
     uuid: string,
-    sessionId: string,
+    sessionId: SessionId,
     userToken?: SessionToken,
 ): (() => boolean) => {
     const entry: ConnectingEntry = {
@@ -95,9 +95,9 @@ const beginConnecting = (
  */
 const revokeConnecting = (
     userId: string,
-    sessionId?: string,
+    sessionId?: SessionId,
     // feat-221: a password change spares the session that asked for it.
-    exceptSessionId?: string,
+    exceptSessionId?: SessionId,
     // Р8: a recovery sign-in closes only the sessions of the token it rotated.
     userToken?: SessionToken,
 ): number => {
@@ -190,7 +190,7 @@ const unregisterConnection = (userId: string, uuid: string): boolean => {
 const isUserOnline = (userId: string): boolean => userStorage.has(userId)
 
 /** feat-233 (Р12, Р13): whether a connection of this session is open on this instance. */
-const hasSessionConnection = (userId: string, sessionId: string): boolean => {
+const hasSessionConnection = (userId: string, sessionId: SessionId): boolean => {
     const user = userStorage.get(userId)
     if (user === undefined) return false
     for (const connection of user.connections.values()) {

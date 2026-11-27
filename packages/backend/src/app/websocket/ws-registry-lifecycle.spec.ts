@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../test-support/ids.js'
 import { sessionIdOf, type SessionToken } from '#app/domain/secrets.js'
 
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
@@ -401,7 +402,7 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         // The session was still stored when it was read; the logout lands now, finds nothing
         // in the registry to close, and the token stays the same.
         expect(
-            wsSessionRevocation.closeUserConnections('9111', { sessionId: sessionIdOf('s1') }),
+            wsSessionRevocation.closeUserConnections(uid(9111), { sessionId: sessionIdOf('s1') }),
         ).toBe(0)
         resolveAccess({ role: 'user', sessionToken: 'u1' })
         await connected
@@ -415,7 +416,7 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         const conn = connection('9112')
 
         const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
-        wsSessionRevocation.closeUserConnections('9112', {
+        wsSessionRevocation.closeUserConnections(uid(9112), {
             sessionId: sessionIdOf('another-session'),
         })
         resolveAccess({ role: 'user', sessionToken: 'u1' })
@@ -440,7 +441,7 @@ describe('a logout while the connection is being opened (feat-210)', () => {
                 'other' as SessionToken,
             ),
         ).toBe(0)
-        wsSessionRevocation.closeUserConnections('9115', {
+        wsSessionRevocation.closeUserConnections(uid(9115), {
             userToken: 'rotated-token' as SessionToken,
         })
         resolveAccess({ role: 'user', sessionToken: 'u1' })
@@ -451,7 +452,9 @@ describe('a logout while the connection is being opened (feat-210)', () => {
 
         // Registered now: a close by its own token reaches it.
         expect(
-            wsSessionRevocation.closeUserConnections('9115', { userToken: 'u1' as SessionToken }),
+            wsSessionRevocation.closeUserConnections(uid(9115), {
+                userToken: 'u1' as SessionToken,
+            }),
         ).toBe(1)
         expect(conn.endedWith).toEqual([4001])
         await conn.close()
@@ -461,7 +464,7 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         const { wsSessionRevocation } = await import('#app/services/auth/ws-session-revocation.js')
         const first = connection('9113')
         const opening = websocketCoordinator.handleConnected(first.ws, first.userData)
-        wsSessionRevocation.closeUserConnections('9113')
+        wsSessionRevocation.closeUserConnections(uid(9113))
         resolveAccess({ role: 'user', sessionToken: 'u1' })
         await opening
         expect(first.endedWith).toEqual([4001])
@@ -653,13 +656,13 @@ describe('session list events of the sockets of a session (feat-233, Р12)', () 
 
         await connect(second)
         expect(announceSessionListChanged).toHaveBeenCalledTimes(1)
-        expect(wsConnectionRegistry.hasSessionConnection('9301', 's1')).toBe(true)
+        expect(wsConnectionRegistry.hasSessionConnection('9301', sessionIdOf('s1'))).toBe(true)
 
         await first.close()
         expect(announceSessionListChanged).toHaveBeenCalledTimes(1)
         await second.close()
         expect(announceSessionListChanged).toHaveBeenCalledTimes(2)
-        expect(wsConnectionRegistry.hasSessionConnection('9301', 's1')).toBe(false)
+        expect(wsConnectionRegistry.hasSessionConnection('9301', sessionIdOf('s1'))).toBe(false)
     })
 
     it('a socket of another session of the same user is its own transition', async () => {
@@ -669,10 +672,10 @@ describe('session list events of the sockets of a session (feat-233, Р12)', () 
         await connect(a)
         await connect(b)
         expect(announceSessionListChanged).toHaveBeenCalledTimes(2)
-        expect(wsConnectionRegistry.hasSessionConnection('9302', 's2')).toBe(true)
+        expect(wsConnectionRegistry.hasSessionConnection('9302', sessionIdOf('s2'))).toBe(true)
         await b.close()
         expect(announceSessionListChanged).toHaveBeenCalledTimes(3)
-        expect(wsConnectionRegistry.hasSessionConnection('9302', 's1')).toBe(true)
+        expect(wsConnectionRegistry.hasSessionConnection('9302', sessionIdOf('s1'))).toBe(true)
         await a.close()
     })
 

@@ -1,6 +1,6 @@
 import { userRepository } from '#app/repositories/index.js'
 import type { SessionId, SessionToken } from '#app/domain/secrets.js'
-import { asUserId } from '#app/domain/ids.js'
+import { asUserId, type UserId } from '#app/domain/ids.js'
 import {
     wsConnectionRegistry,
     type ListedConnection,
@@ -88,13 +88,15 @@ export const wsSessionRevocation = {
      * already, and a connection that could not be closed is left to the re-check.
      */
     closeUserConnections(
-        userId: string,
+        owner: UserId,
         options: {
             sessionId?: SessionId
             exceptSessionId?: SessionId
             userToken?: SessionToken
         } = {},
     ): number {
+        // feat-273: the registry keys connections by the id's text.
+        const userId = String(owner)
         try {
             const { sessionId, exceptSessionId, userToken } = options
             // feat-210: before the close, so a connection that registers in between is either

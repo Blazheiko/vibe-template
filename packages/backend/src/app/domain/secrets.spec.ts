@@ -65,6 +65,19 @@ describe('secrets typed by state', () => {
         expect(otpCodeMatches(KEY, code, corrupt)).toBe(false)
     })
 
+    // feat-273: decoding drops a non-hex suffix and an odd last digit; neither may make a match.
+    it.each([
+        ['junk', 'zz'],
+        ['one extra hex digit', 'a'],
+        ['a newline', '\n'],
+    ])('the right hash with %s after it is no match', (_name, suffix) => {
+        const code = otpCodeOf('123456')
+        const hash = hashOtpCode(KEY, code)
+        expect(otpCodeMatches(KEY, code, (hash + suffix) as OtpHash)).toBe(false)
+        expect(otpCodeMatches(KEY, code, hash.toUpperCase() as OtpHash)).toBe(false)
+        expect(otpCodeMatches(KEY, code, hash)).toBe(true)
+    })
+
     it('a recovery code is hashed only in its normalized form', () => {
         const raw = rawRecoveryCodeOf('AB0C-D1EF-GH2J-KM3N')
         const normalized = normalizeRecoveryCode(raw)

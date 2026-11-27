@@ -150,7 +150,7 @@ describe('revoke (Р8)', () => {
         expect(repositories.lockById.mock.invocationCallOrder[0]).toBeLessThan(
             storage.destroySession.mock.invocationCallOrder[0] ?? 0,
         )
-        expect(closeUserConnections).toHaveBeenCalledWith('7', { sessionId: 'other-sid' })
+        expect(closeUserConnections).toHaveBeenCalledWith(7n, { sessionId: 'other-sid' })
         expect(security).toHaveBeenCalledWith(7n, 'session_revoked')
         expect(sessionListChanged).toHaveBeenCalledWith('7')
     })
@@ -205,7 +205,7 @@ describe('revokeOthers (Р9)', () => {
         expect([userId, presented, tx]).toEqual([7n, 'tok', TX])
         expect(change).toEqual({ sessionToken: result.value.sessionToken })
         expect(retirePendingResets).toHaveBeenCalledWith({ id: 7n, phone: '+380501112233' }, TX)
-        expect(closeUserConnections).toHaveBeenCalledWith('7', { exceptSessionId: 'current-sid' })
+        expect(closeUserConnections).toHaveBeenCalledWith(7n, { exceptSessionId: 'current-sid' })
         expect(storage.destroyAllSessions).toHaveBeenCalledWith('tok')
         expect(security).toHaveBeenCalledWith(7n, 'logout_all')
     })

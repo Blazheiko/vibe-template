@@ -126,9 +126,11 @@ export default Object.freeze({
     /** The keys were derived from APP_KEY because MFA_ENCRYPTION_KEYS is not set (development). */
     encryptionKeysDerived: parsedKeys.derived,
     /** A step-up proof counts this long, in seconds (AUTH_REAUTH_WINDOW_SECONDS, default 300). */
-    reauthWindowSeconds: reader.int('AUTH_REAUTH_WINDOW_SECONDS', 300, { min: 30, max: 3600 }),
+    reauthWindowSeconds: seconds(
+        reader.int('AUTH_REAUTH_WINDOW_SECONDS', 300, { min: 30, max: 3600 }),
+    ),
     /** A recent OAuth sign-in stands for a proof this long (the rule of feat-097), in seconds. */
-    oauthRecentSeconds: 600,
+    oauthRecentSeconds: seconds(600),
     /** Absolute lifetime of a recovery session (MFA_RECOVERY_WINDOW_SECONDS, default 900). */
     recoveryWindowSeconds: seconds(
         reader.int('MFA_RECOVERY_WINDOW_SECONDS', 900, { min: 60, max: 3600 }),

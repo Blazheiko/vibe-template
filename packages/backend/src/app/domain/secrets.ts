@@ -68,14 +68,17 @@ export const otpCodeOf = (text: string): OtpCode => text as OtpCode
 
 export const hashOtpCode = (key: string, code: OtpCode): OtpHash => hmac(key, code) as OtpHash
 
+/** The text of an OTP hash: HMAC-SHA256 in hex. */
+const OTP_HASH_PATTERN = /^[0-9a-f]{64}$/
+
 /** Whether `code` is the one `expected` was made from; constant time. */
 export function otpCodeMatches(key: string, code: OtpCode, expected: OtpHash): boolean {
-    // feat-272: the decoded lengths are compared, not the texts: a stored value of the right
-    // length that is not hex decodes shorter, and timingSafeEqual would throw on it.
-    const actualBuf = Buffer.from(hashOtpCode(key, code), 'hex')
-    const expectedBuf = Buffer.from(expected, 'hex')
-    if (actualBuf.length !== expectedBuf.length) return false
-    return timingSafeEqual(actualBuf, expectedBuf)
+    // feat-273: the stored hash must be exactly the 64 hex characters of an HMAC-SHA256. Decoding
+    // drops what is not hex, so a hash with junk or one extra digit after it would decode to the
+    // right bytes and match; a non-hex value of the right length would decode shorter and make
+    // timingSafeEqual throw. Neither is a match.
+    if (!OTP_HASH_PATTERN.test(expected)) return false
+    return timingSafeEqual(Buffer.from(hashOtpCode(key, code), 'hex'), Buffer.from(expected, 'hex'))
 }
 
 /**

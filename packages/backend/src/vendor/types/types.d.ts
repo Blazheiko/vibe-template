@@ -152,7 +152,7 @@ export interface Auth {
      * feat-245 (Р4): sets (or with null clears) the second-step ticket cookie. feat-257: a ticket
      * comes with the value of its binding cookie (`bind`), set and cleared with it.
      */
-    setMfaTicketCookie: (ticketId: string | null, maxAgeSeconds: number, bind?: string) => void
+    setMfaTicketCookie: (ticketId: string | null, maxAgeSeconds: Seconds, bind?: string) => void
     /**
      * feat-245 (Р4): what a second-step sign-in will create, fixed once so a repeat creates the same
      * session (same id, device, auth state and recovery expiry). Pure: nothing is written.

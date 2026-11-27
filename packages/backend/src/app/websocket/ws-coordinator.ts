@@ -55,8 +55,10 @@ const drainDisconnects = async (timeoutMs: number): Promise<boolean> => {
  * TypeScript type narrowing.
  */
 const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promise<void> => {
-    const { userId, sessionId } = userData
-    if (userId === undefined || sessionId === undefined) return
+    const { userId } = userData
+    if (userId === undefined || userData.sessionId === undefined) return
+    // feat-273: the session id as the registry keeps it.
+    const sessionId = sessionIdOf(userData.sessionId)
     // feat-271 (Р13): the id the upgrade checked, read by its brand constructor once. feat-272:
     // one that is not a row id is logged and its socket closed, as a revoked session is; a bare
     // return would leave an unregistered socket open.
@@ -93,7 +95,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
             // A logout of one session deletes its stored record and rotates nothing.
             userToken === undefined
                 ? Promise.resolve(false)
-                : wsSessionRevocation.isSessionStored(sessionIdOf(sessionId), userToken),
+                : wsSessionRevocation.isSessionStored(sessionId, userToken),
         ])
         // feat-243 (review 2026-11-21): a role change signalled while the role was read is not
         // seen by wsRoleSync (this connection is not registered yet); it marked the connection,
@@ -189,8 +191,9 @@ const handleDisconnected = async (
     userData: UserConnection,
     code: number,
 ): Promise<void> => {
-    const { userId, sessionId } = userData
-    if (userId === undefined || sessionId === undefined) return
+    const { userId } = userData
+    if (userId === undefined || userData.sessionId === undefined) return
+    const sessionId = sessionIdOf(userData.sessionId)
     const disconnectedAt = new Date()
 
     // Remove the closed socket from the in-memory registry FIRST, synchronously.

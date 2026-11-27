@@ -8,6 +8,7 @@
 // of another user). Row 12 (sign-in with a recovery code) and row 16 (an OAuth link made by a
 // sign-in) belong to the second sign-in step, not to a step-up.
 
+import { seconds, type Seconds, type UnixMs } from '../brand/index.js'
 import {
     isActiveRecovery,
     isFresh,
@@ -39,14 +40,14 @@ export interface ProofAccount {
 
 export interface ProofWindows {
     /** AUTH_REAUTH_WINDOW_SECONDS: a password or a factor proven this recently counts. */
-    reauthSeconds: number
+    reauthSeconds: Seconds
     /** A sign-in through OAuth this recent stands for a proof of an account without a password. */
-    oauthRecentSeconds: number
+    oauthRecentSeconds: Seconds
 }
 
 export const DEFAULT_PROOF_WINDOWS: ProofWindows = {
-    reauthSeconds: 300,
-    oauthRecentSeconds: 600,
+    reauthSeconds: seconds(300),
+    oauthRecentSeconds: seconds(600),
 }
 
 /**
@@ -102,7 +103,7 @@ export interface ProofInput {
     action: ProofAction
     account: ProofAccount
     auth: SessionAuthState | undefined | null
-    now: number
+    now: UnixMs
     windows?: ProofWindows
     /** Rows 9–10: the proofs the staff policy accepts (staffMfaPolicy(mode).stepUpProofs). */
     staffStepUpProofs?: readonly ProofMethod[]
@@ -173,7 +174,7 @@ export interface ProofAdmissibilityInput {
     /** The proof `proofDecision` accepted earlier (kept by the first step of a two-step action). */
     proof: AcceptedProof
     auth: SessionAuthState | undefined | null
-    now: number
+    now: UnixMs
     staffStepUpProofs?: readonly ProofMethod[]
 }
 

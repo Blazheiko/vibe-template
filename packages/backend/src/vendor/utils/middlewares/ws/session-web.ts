@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
 import { sessionHandler } from '#vendor/utils/session/session-handler.js'
 import sessionConfig from '#config/session.js'
@@ -39,7 +40,7 @@ const attachCsrfToken = (context: HttpContext): void => {
  */
 export const recoveryGate = (context: HttpContext): boolean => {
     const auth = context.session.sessionInfo?.data.auth
-    if (auth?.recovery === undefined || !isActiveRecovery(auth, Date.now())) return true
+    if (auth?.recovery === undefined || !isActiveRecovery(auth, nowUnixMs())) return true
     if (context.httpData.allowInRecovery === true) return true
     context.responseData.status = 403
     context.responseData.payload = {

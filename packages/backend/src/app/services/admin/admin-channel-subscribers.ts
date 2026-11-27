@@ -1,4 +1,5 @@
 import type { UnixMs } from 'shared/brand'
+import { NO_STAFF_DEADLINE, type StaffDeadline } from '#app/services/auth/mfa/staff-policy.js'
 import type { WsChannel } from 'shared/guards'
 
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
@@ -16,7 +17,7 @@ export const ADMIN_CHANNEL: WsChannel = 'admin'
 
 interface Entry {
     ws: MyWebSocket
-    deadline: UnixMs
+    deadline: StaffDeadline
 }
 
 /** Ascending by deadline; NO_STAFF_DEADLINE (the rule is off) at the end. */
@@ -33,13 +34,21 @@ const userDataOf = (ws: MyWebSocket): UserConnection | null => {
 }
 
 /** The index where an entry with `deadline` goes: after every entry with a deadline ≤ it. */
-const insertionIndex = (deadline: UnixMs): number => {
+/** Whether `a` comes no later than `b`; never is later than every instant. */
+const noLaterThan = (a: StaffDeadline, b: StaffDeadline): boolean =>
+    b === NO_STAFF_DEADLINE || (a !== NO_STAFF_DEADLINE && a <= b)
+
+/** Whether the deadline has come at `nowMs`; never has not. */
+const hasCome = (deadline: StaffDeadline, nowMs: UnixMs): boolean =>
+    deadline !== NO_STAFF_DEADLINE && deadline <= nowMs
+
+const insertionIndex = (deadline: StaffDeadline): number => {
     let low = 0
     let high = ordered.length
     while (low < high) {
         const middle = (low + high) >>> 1
         const entry = ordered[middle]
-        if (entry !== undefined && entry.deadline <= deadline) low = middle + 1
+        if (entry !== undefined && noLaterThan(entry.deadline, deadline)) low = middle + 1
         else high = middle
     }
     return low
@@ -67,7 +76,7 @@ const detach = (entry: Entry): void => {
 
 export const adminChannelSubscribers = {
     /** Adds the socket with its deadline, or moves it when it is there already. */
-    set(ws: MyWebSocket, deadline: UnixMs): void {
+    set(ws: MyWebSocket, deadline: StaffDeadline): void {
         const existing = bySocket.get(ws)
         if (existing !== undefined) detach(existing)
         const entry: Entry = { ws, deadline }
@@ -87,7 +96,7 @@ export const adminChannelSubscribers = {
         return bySocket.has(ws)
     },
 
-    deadlineOf(ws: MyWebSocket): UnixMs | undefined {
+    deadlineOf(ws: MyWebSocket): StaffDeadline | undefined {
         return bySocket.get(ws)?.deadline
     },
 
@@ -102,7 +111,7 @@ export const adminChannelSubscribers = {
     dropExpired(nowMs: UnixMs): number {
         let dropped = 0
         let entry = ordered[0]
-        while (entry !== undefined && entry.deadline <= nowMs) {
+        while (entry !== undefined && hasCome(entry.deadline, nowMs)) {
             ordered.shift()
             bySocket.delete(entry.ws)
             dropped += 1

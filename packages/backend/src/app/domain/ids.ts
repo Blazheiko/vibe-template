@@ -6,6 +6,7 @@
 // No # imports in app/domain (plan Р3, Р10): database/schema.ts may import these modules with a
 // relative path, and drizzle-kit loads the schema without the aliases.
 
+import { nanoid } from 'nanoid'
 import { isValidEntityId, type EntityId } from 'shared/brand'
 
 import type {
@@ -129,6 +130,12 @@ export const parseAuditEventId = (raw: string | null | undefined): AuditEventId 
  * The id of an SMS challenge as a client sends it back, or null. The ids are nanoids of up to 24
  * characters (sms_auth_challenges.id is varchar(24)): any other text names no challenge.
  */
+/**
+ * feat-273: a new SMS challenge id, the default of sms_auth_challenges.id (a nanoid of 21
+ * characters, within the varchar(24) parseSmsChallengeId accepts).
+ */
+export const newSmsChallengeId = (): SmsChallengeId => nanoid<SmsChallengeId>()
+
 export const parseSmsChallengeId = (raw: string | null | undefined): SmsChallengeId | null =>
     typeof raw === 'string' && /^[\w-]{1,24}$/.test(raw) ? (raw as SmsChallengeId) : null
 
