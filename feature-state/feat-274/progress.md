@@ -73,6 +73,16 @@ Registry PR: #892 (merged, `in_progress`). Status: implementation done, PR open.
 session:<userToken>:<sessionId>` with the socket open, then a known-route event → 4001 (the
   `missing` branch).
 
+## Review of #893 (COMMENT, c244ead7)
+
+- No regressions in the code. Medium: `auth.md` (both locales) still said that every WS message
+  checks the token (revocation list) and the session's max age. Both places now say the check runs
+  for a message of a known route after the envelope format check, and that `ping` and unknown
+  events do not read the session; an expired session closes the connection with 4001 on the next
+  such message. The same precision in `controllers.md` ("WsContext in detail": the context is made
+  only for a message that reaches the dispatcher). `docs:build` + `docs:verify` and
+  `format:check` passed.
+
 ## Notes for Next Session
 
 - Do the manual check (needs this project's PostgreSQL / Redis on 5432 / 6379).
