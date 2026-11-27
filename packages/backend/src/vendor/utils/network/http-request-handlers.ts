@@ -295,11 +295,6 @@ const getData = async (
 
 // ─── URL / params helpers ─────────────────────────────────────────────────────
 
-const isValidUrl = (url: string): boolean => {
-    // Check for multiple consecutive slashes (e.g., //, ///)
-    return !/\/\/+/.test(url)
-}
-
 const extractParameters = (paramNames: string[], req: HttpRequest): Record<string, string> => {
     const params: Record<string, string> = {}
     for (let i = 0; i < paramNames.length; i++) {
@@ -341,4 +336,4 @@ const parseCookies = (cookieHeader: string): Map<string, string> => {
     return list
 }
 
-export { getHeaders, getData, extractParameters, isValidUrl, parseCookies }
+export { getHeaders, getData, extractParameters, parseCookies }

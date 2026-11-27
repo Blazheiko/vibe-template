@@ -1,12 +1,10 @@
 import { executeWsMiddlewares } from '#vendor/utils/middlewares/core/execute-httpMiddlewares.js'
-// import validators from '#vendor/start/validators.js';
 import type {
     WsData,
     WsMessage,
     WsResponseData,
     MyWebSocket,
     UserConnection,
-    // ValidatorFunction,
     Payload,
     WsRoutes,
 } from '#vendor/types/types.js'

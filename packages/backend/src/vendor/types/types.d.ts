@@ -14,8 +14,6 @@ export type Payload = Record<string, unknown> | string | Buffer | number | boole
 
 export type Params = Record<string, string>
 
-export type ValidatorFunction = (payload: Payload) => Promise<Payload>
-
 export interface UserConnection extends Record<string, unknown> {
     ip: string
     userAgent: string
