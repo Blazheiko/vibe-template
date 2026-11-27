@@ -201,7 +201,8 @@ describe.skipIf(!hasRedis)('main Redis client against a real server', () => {
         })
 
         it('saveSession is not resent: the key never appears', async () => {
-            const outcome = await postponeAndKill(client, 'setex', () =>
+            // feat-272: saveSession writes SET … EX through the typed TTL helper.
+            const outcome = await postponeAndKill(client, 'set', () =>
                 storage.saveSession(session('write', 'A')),
             )
             expect(outcome).toBeInstanceOf(RedisUnavailableError)
@@ -229,9 +230,9 @@ describe.skipIf(!hasRedis)('main Redis client against a real server', () => {
             expect(await exists(sessionKey('logout'))).toBe(false)
         })
 
-        it('a stale SETEX snapshot does not overwrite the session', async () => {
+        it('a stale SET … EX snapshot does not overwrite the session', async () => {
             await storage.saveSession(session('stale', 'V0'))
-            await postponeAndKill(client, 'setex', () => storage.saveSession(session('stale', 'A')))
+            await postponeAndKill(client, 'set', () => storage.saveSession(session('stale', 'A')))
             await sleep(300)
             expect((await storage.getSession('stale', USER_TOKEN))?.data['value']).toBe('V0')
 
@@ -240,7 +241,7 @@ describe.skipIf(!hasRedis)('main Redis client against a real server', () => {
         })
     })
 
-    it('late execution (documented): a timed-out SETEX still runs after UNPAUSE', async () => {
+    it('late execution (documented): a timed-out SET … EX still runs after UNPAUSE', async () => {
         await pause()
         try {
             await expect(storage.saveSession(session('late', 'A'))).rejects.toBeInstanceOf(
@@ -250,7 +251,7 @@ describe.skipIf(!hasRedis)('main Redis client against a real server', () => {
         } finally {
             await unpause()
         }
-        await waitFor(() => exists(sessionKey('late')), 'the postponed SETEX')
+        await waitFor(() => exists(sessionKey('late')), 'the postponed SET … EX')
     })
 
     it('health: one event per incident, recovery without a reconnect', async () => {

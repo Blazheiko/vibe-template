@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { addMs, toMs, nowUnixMs, type UnixMs } from 'shared/brand'
+import { addMs, toMs, nowUnixMs, seconds, type UnixMs } from 'shared/brand'
 import { normalizeEmail } from '#app/domain/email.js'
 import {
     mfaBindValueOf,
@@ -17,6 +17,7 @@ import {
     mfaTicketIdOf,
     mfaCompletionIdOf,
     sessionTokenOf,
+    sessionIdOf,
 } from '#app/domain/secrets.js'
 import { MFA_REASONS, type SessionAuthState } from 'shared/mfa'
 import type { AuthenticationResponse } from 'shared/schemas'
@@ -580,7 +581,8 @@ async function attempt(
                 )
             }
 
-            const ttl = Math.max(1, await mfaTicketStore.ttl(ticketId))
+            // feat-272 (Р7): the ticket's remaining lifetime stays Seconds up to the record.
+            const ttl = seconds(Math.max(1, await mfaTicketStore.ttl(ticketId)))
             const prepared = await context.auth.prepareLogin(plan, completionId, ttl)
             if (prepared === 'conflict') throw new Error('pending session conflict')
 
@@ -911,7 +913,7 @@ async function endOtherSessions(
     currentSessionId: string,
 ): Promise<void> {
     wsSessionRevocation.closeUserConnections(plan.userId, {
-        exceptSessionId: plan.sessionId,
+        exceptSessionId: sessionIdOf(plan.sessionId),
         userToken: sessionTokenOf(ticket.userTokenAtStart),
     })
     const cleanup = await destroyAllSessions(ticket.userTokenAtStart, {

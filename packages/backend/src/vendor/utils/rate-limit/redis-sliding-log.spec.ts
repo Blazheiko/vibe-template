@@ -1,3 +1,4 @@
+import { ms } from 'shared/brand'
 import { describe, expect, it, vi } from 'vitest'
 
 import { consumeRedisSlidingLog, slidingLogKey } from './redis-sliding-log.js'
@@ -8,7 +9,7 @@ describe('consumeRedisSlidingLog', () => {
         const decision = await consumeRedisSlidingLog(
             { eval: evalMock },
             slidingLogKey('upgrade', '10.0.0.1'),
-            { windowMs: 60_000, max: 60 },
+            { windowMs: ms(60_000), max: 60 },
             'nonce-1',
         )
         expect(evalMock).toHaveBeenCalledTimes(1)
@@ -32,7 +33,7 @@ describe('consumeRedisSlidingLog', () => {
         const evalMock = vi.fn().mockResolvedValue([0, 1500, 1_001_500])
         await expect(
             consumeRedisSlidingLog({ eval: evalMock }, 'k', {
-                windowMs: 60_000,
+                windowMs: ms(60_000),
                 max: 1,
             }),
         ).resolves.toEqual({
@@ -46,11 +47,11 @@ describe('consumeRedisSlidingLog', () => {
     it('uses a fresh nonce per call by default', async () => {
         const evalMock = vi.fn().mockResolvedValue([1, 0, 0])
         await consumeRedisSlidingLog({ eval: evalMock }, 'k', {
-            windowMs: 1,
+            windowMs: ms(1),
             max: 2,
         })
         await consumeRedisSlidingLog({ eval: evalMock }, 'k', {
-            windowMs: 1,
+            windowMs: ms(1),
             max: 2,
         })
         const nonces = evalMock.mock.calls.map((call) => call[5] as string)

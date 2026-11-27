@@ -10,7 +10,14 @@ import type {
     SessionDevice,
     SessionInfo,
 } from '#vendor/types/types.js'
-import { isValidEntityId, nowUnixMs, unixSecondsOf, type UnixSeconds } from 'shared/brand'
+import {
+    isValidEntityId,
+    nowUnixMs,
+    seconds,
+    unixSecondsOf,
+    type Seconds,
+    type UnixSeconds,
+} from 'shared/brand'
 import { USER_AGENT_MAX_LENGTH } from 'shared/utils'
 import sessionConfig from '#config/session.js'
 import {
@@ -58,10 +65,10 @@ const ANON_TOKEN = ANON_SESSION_NAMESPACE
  * Re-sending it on every request let a slow response restore a session cookie that a
  * concurrent request (password change, logout-all) had already replaced.
  */
-const COOKIE_REFRESH_SECONDS = 60 * 60
+const COOKIE_REFRESH_SECONDS = seconds(60 * 60)
 
 /** A cookie-held anonymous session is re-issued once it is older than this (sliding TTL). */
-const ANON_COOKIE_REFRESH_SECONDS = 15 * 60
+const ANON_COOKIE_REFRESH_SECONDS = seconds(15 * 60)
 
 const nowSeconds = (): UnixSeconds => unixSecondsOf(nowUnixMs())
 
@@ -590,7 +597,7 @@ export class RequestSession {
     private async prepareLogin(
         plan: LoginPlan,
         completionId: string,
-        ttlSeconds: number,
+        ttlSeconds: Seconds,
     ): Promise<'created' | 'exists' | 'conflict'> {
         return preparePendingSession(
             this.planRecord(plan, completionId, true),

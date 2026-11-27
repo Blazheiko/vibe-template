@@ -18,10 +18,11 @@ const BRAND_KEY = ' brand'
  * @param {import('typescript').Type} type
  * @returns {type is import('typescript').TypeReference}
  */
-const isTypeReference = (type) =>
-    (type.flags & ts.TypeFlags.Object) !== 0 &&
-    /** @type {import('typescript').ObjectType} */ (type.objectFlags & ts.ObjectFlags.Reference) !==
-        0
+const isTypeReference = (type) => {
+    if ((type.flags & ts.TypeFlags.Object) === 0) return false
+    const object = /** @type {import('typescript').ObjectType} */ (type)
+    return (object.objectFlags & ts.ObjectFlags.Reference) !== 0
+}
 
 /** @type {import('eslint').Rule.RuleModule} */
 const rule = {

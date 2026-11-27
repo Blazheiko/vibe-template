@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { presentedSessionTokenOf } from '#app/domain/secrets.js'
+import { presentedSessionTokenOf, sessionIdOf } from '#app/domain/secrets.js'
 import { toEntityId } from '#app/domain/ids.js'
 import type { ListSessionsQuery } from 'shared/schemas'
 import type {
@@ -87,7 +87,9 @@ export default {
                 { err: renewed.error },
                 'Session renewal after ending the other sessions failed',
             )
-            wsSessionRevocation.closeUserConnections(toEntityId(userId), { sessionId })
+            wsSessionRevocation.closeUserConnections(toEntityId(userId), {
+                sessionId: sessionIdOf(sessionId),
+            })
             return { status: 'success', sessionRenewed: false }
         }
         return { status: 'success', sessionRenewed: true, ...renewed.value }

@@ -36,7 +36,12 @@ const { default: client, redisHealth } = (await import('#database/redis.js')) as
     default: Redis
     redisHealth: { stop(): void }
 }
-const { setIfAbsentWithTtlMs, setWithTtlSeconds } = await import('./redis-ttl.js')
+const {
+    getAndRenewTtlSeconds,
+    setIfAbsentWithTtlMs,
+    setIfAbsentWithTtlSeconds,
+    setWithTtlSeconds,
+} = await import('#vendor/utils/redis/redis-ttl.js')
 const { generateWsToken } = await import('#app/services/auth/generate-ws-token-service.js')
 const { passkeyLoginChallenges, passkeyTicketChallenges, ticketHash } =
     await import('#app/services/auth/mfa/passkey-login-challenges.js')
@@ -68,6 +73,22 @@ describe.skipIf(!hasRedis)('typed Redis TTL helpers', () => {
         await setWithTtlSeconds(client, 'ttl:ceil', 'v', toSecondsCeil(ms(1_500)))
         // 1.5 s becomes 2 s, not 1 s.
         expect(await admin.pttl('ttl:ceil')).toBeGreaterThan(1_500)
+    })
+
+    // feat-272: the forms the session layer uses.
+    it('setIfAbsentWithTtlSeconds writes an EX expiry, only once', async () => {
+        expect(await setIfAbsentWithTtlSeconds(client, 'ttl:ex-nx', 'a', seconds(90))).toBe('OK')
+        expect(await setIfAbsentWithTtlSeconds(client, 'ttl:ex-nx', 'b', seconds(90))).toBeNull()
+        const ttl = await admin.ttl('ttl:ex-nx')
+        expect(ttl).toBeGreaterThan(88)
+        expect(ttl).toBeLessThanOrEqual(90)
+    })
+
+    it('getAndRenewTtlSeconds reads the value and renews the EX expiry', async () => {
+        await setWithTtlSeconds(client, 'ttl:getex', 'v', seconds(5))
+        expect(await getAndRenewTtlSeconds(client, 'ttl:getex', seconds(300))).toBe('v')
+        expect(await admin.ttl('ttl:getex')).toBeGreaterThan(298)
+        expect(await getAndRenewTtlSeconds(client, 'ttl:gone', seconds(300))).toBeNull()
     })
 
     it('setIfAbsentWithTtlMs writes a PX expiry in milliseconds, only once', async () => {

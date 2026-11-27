@@ -37,6 +37,11 @@ export type MfaBinding = Brand<string, 'MfaBinding'>
  * revokes every session.
  */
 export type SessionToken = Brand<string, 'SessionToken'>
+/**
+ * The id of one stored session (feat-272, T30): its Redis key part and the sid of its cookie. Not
+ * a secret, but text the session layer wrote, kept apart from the token it is stored under.
+ */
+export type SessionId = Brand<string, 'SessionId'>
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 const hmac = (key: string, text: string): string =>
@@ -65,9 +70,12 @@ export const hashOtpCode = (key: string, code: OtpCode): OtpHash => hmac(key, co
 
 /** Whether `code` is the one `expected` was made from; constant time. */
 export function otpCodeMatches(key: string, code: OtpCode, expected: OtpHash): boolean {
-    const actual = hashOtpCode(key, code)
-    if (actual.length !== expected.length) return false
-    return timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'))
+    // feat-272: the decoded lengths are compared, not the texts: a stored value of the right
+    // length that is not hex decodes shorter, and timingSafeEqual would throw on it.
+    const actualBuf = Buffer.from(hashOtpCode(key, code), 'hex')
+    const expectedBuf = Buffer.from(expected, 'hex')
+    if (actualBuf.length !== expectedBuf.length) return false
+    return timingSafeEqual(actualBuf, expectedBuf)
 }
 
 /**
@@ -137,6 +145,9 @@ export const newSessionToken = (): SessionToken => nanoid<SessionToken>()
 
 /** A session token read from a session record or a WS token (text the app wrote). */
 export const sessionTokenOf = (text: string): SessionToken => text as SessionToken
+
+/** The id of a session the session layer handed over (`sessionInfo.id`, a WS connection). */
+export const sessionIdOf = (text: string): SessionId => text as SessionId
 
 /** The session token a request presented (`auth.getPresentedUserToken()`), if any. */
 export const presentedSessionTokenOf = (text: string | undefined): SessionToken | undefined =>

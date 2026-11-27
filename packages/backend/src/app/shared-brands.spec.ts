@@ -27,6 +27,21 @@ import { uid } from '../test-support/ids.js'
 const takesId = (id: EntityId): string => id
 
 describe('EntityId brand', () => {
+    // feat-272: only a branded row id becomes an EntityId; a bare bigint may be no row id at all.
+    it('toEntityId takes a row id, not any bigint', () => {
+        const typeCases = (): unknown[] => [
+            toEntityId(uid(7)),
+            // @ts-expect-error 0n is no row id (the shared validator refuses '0')
+            toEntityId(0n),
+            // @ts-expect-error nor is a negative one
+            toEntityId(-1n),
+            // @ts-expect-error nor one past the bigint column
+            toEntityId(2n ** 63n),
+        ]
+        expect(typeof typeCases).toBe('function')
+        expect(toEntityId(uid(7))).toBe('7')
+    })
+
     it('is produced by the schema', () => {
         const parsed = EntityIdSchema('42')
         if (parsed instanceof type.errors) throw new Error(parsed.summary)

@@ -3,7 +3,7 @@ import { seconds, type Seconds } from 'shared/brand'
 import type { MfaTicketId } from '#app/domain/secrets.js'
 
 import redis, { withRedis } from '#database/redis.js'
-import { setWithTtlSeconds } from '#app/services/shared/redis-ttl.js'
+import { setWithTtlSeconds } from '#vendor/utils/redis/redis-ttl.js'
 import webauthnConfig from '#config/webauthn.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р5, Р6): the WebAuthn challenges that live outside a

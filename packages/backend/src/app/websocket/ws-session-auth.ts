@@ -6,6 +6,7 @@ import type { UpgradeTokenResult } from '#vendor/utils/network/ws-handlers.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { checkSessionToken } from '#app/services/auth/session-token-check.js'
 import { parseUserId } from '#app/domain/ids.js'
+import { sessionTokenOf } from '#app/domain/secrets.js'
 import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 
 const MISSING: UpgradeTokenResult = { kind: 'missing' }
@@ -47,9 +48,13 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
             typeof userId !== 'string' ||
             typeof userToken !== 'string' ||
             sessionId === '' ||
-            userToken === '' ||
-            parseUserId(userId) === null
+            userToken === ''
         ) {
+            logger.warn({ sessionId, userId }, 'verifyUpgradeToken: invalid token data')
+            return MISSING
+        }
+        const ownerId = parseUserId(userId)
+        if (ownerId === null) {
             logger.warn({ sessionId, userId }, 'verifyUpgradeToken: invalid token data')
             return MISSING
         }
@@ -87,7 +92,7 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
         if ('userId' in data && data.userId === userId) {
             // ADR 0002: a rotated sessionToken revokes the session even though its
             // Redis record is still there.
-            const tokenStatus = await checkSessionToken(userId, userToken)
+            const tokenStatus = await checkSessionToken(ownerId, sessionTokenOf(userToken))
             if (tokenStatus === 'unavailable') return { kind: 'unavailable' }
             if (tokenStatus === 'mismatch') {
                 logger.warn(

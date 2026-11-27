@@ -1,6 +1,7 @@
 import type { WebSocket } from 'uWebSockets.js'
 import type { Logger } from 'pino'
 import type { BaseType } from '@arktype/type'
+import type { Seconds } from 'shared/brand'
 import type { InferPayload, Validator } from '#vendor/contracts/validator.js'
 import type { BodyKind } from '../utils/network/http-request-handlers.js'
 import type { ResponseCheck } from '../utils/validation/validate-response.js'
@@ -169,7 +170,7 @@ export interface Auth {
     prepareLogin: (
         plan: LoginPlan,
         completionId: string,
-        ttlSeconds: number,
+        ttlSeconds: Seconds,
     ) => Promise<'created' | 'exists' | 'conflict'>
     /**
      * feat-245 (Р4): after the commit, makes the planned session active in one Redis transition

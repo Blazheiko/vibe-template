@@ -1,7 +1,7 @@
 import type { ResponseData, SessionInfo } from '#vendor/types/types.js'
 import { asIsoDateTime } from '#app/domain/wire.js'
 import { toIsoDateTime, toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
-import { toEntityId, asUserId } from '#app/domain/ids.js'
+import { toEntityId, parseUserId } from '#app/domain/ids.js'
 import { userRepository } from '#app/repositories/index.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
@@ -78,12 +78,14 @@ export const mainService = {
             return Result.err(notFound('Session', 'Session not found'))
         }
 
-        const userId = sessionInfo.data.userId
-        if (userId === undefined || userId === '') {
+        // feat-272 (Р13): a stored user id that is not a row id is an expired session, never a
+        // throw (this reads the record directly, not through auth.getUserId()).
+        const owner = parseUserId(sessionInfo.data.userId)
+        if (owner === null) {
             return Result.err(unauthorized('Session expired'))
         }
 
-        const user = await userRepository.findById(asUserId(userId))
+        const user = await userRepository.findById(owner)
         if (user === undefined) {
             return Result.err(unauthorized('Session expired'))
         }

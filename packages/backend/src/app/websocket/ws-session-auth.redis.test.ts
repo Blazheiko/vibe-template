@@ -99,6 +99,6 @@ describe.skipIf(!hasRedis)('verifyUpgradeToken: the userId of the token record',
             userId: '42',
             userToken: 'u1',
         })
-        expect(checkSessionToken).toHaveBeenCalledWith('42', 'u1')
+        expect(checkSessionToken).toHaveBeenCalledWith(42n, 'u1')
     })
 })

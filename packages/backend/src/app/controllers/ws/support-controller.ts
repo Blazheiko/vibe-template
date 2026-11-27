@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { asUserId } from '#app/domain/ids.js'
+import { parseUserId } from '#app/domain/ids.js'
 import type { WsContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { supportService } from '#app/services/support/support-service.js'
@@ -17,12 +17,13 @@ import type { SupportChatResponse, SupportOpenChatResponse } from 'shared/respon
 export default {
     async openChat(context: WsContext<SupportOpenChatInput>): Promise<SupportOpenChatResponse> {
         const { userData } = context
-        if (userData?.userId === undefined) {
+        // feat-272 (Р13): the connection's user id, read by its brand constructor.
+        const userId = parseUserId(userData?.userId)
+        if (userData === null || userId === null) {
             return appErrorToPayload(unauthorized())
         }
 
         const payload = getTypedPayload(context)
-        const userId = asUserId(userData.userId)
 
         const admission = await supportService.admitOpenChat(userId)
         if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
@@ -40,12 +41,13 @@ export default {
 
     async chat(context: WsContext<SupportChatInput>): Promise<SupportChatResponse> {
         const { userData } = context
-        if (userData?.userId === undefined) {
+        // feat-272 (Р13): the connection's user id, read by its brand constructor.
+        const userId = parseUserId(userData?.userId)
+        if (userData === null || userId === null) {
             return appErrorToPayload(unauthorized())
         }
 
         const payload = getTypedPayload(context)
-        const userId = asUserId(userData.userId)
 
         const admission = await supportService.admitChat(userId, payload.message)
         if (Result.isError(admission)) return mapWsControllerError(context, admission.error)

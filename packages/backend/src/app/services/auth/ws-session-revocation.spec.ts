@@ -1,5 +1,5 @@
 import type { MyWebSocket } from '#vendor/types/types.js'
-import type { SessionToken } from '#app/domain/secrets.js'
+import { sessionIdOf, type SessionToken } from '#app/domain/secrets.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const listConnections = vi.hoisted(() => vi.fn())
@@ -91,7 +91,9 @@ describe('closeUserConnections', () => {
         const otherSession = connection('1', 'b', 's2', 't')
         listUserConnections.mockReturnValue([loggedOut, otherSession])
 
-        expect(wsSessionRevocation.closeUserConnections('1', { sessionId: 's1' })).toBe(1)
+        expect(
+            wsSessionRevocation.closeUserConnections('1', { sessionId: sessionIdOf('s1') }),
+        ).toBe(1)
 
         expect(loggedOut.end).toHaveBeenCalledWith(4001)
         expect(otherSession.end).not.toHaveBeenCalled()
@@ -105,7 +107,9 @@ describe('closeUserConnections', () => {
         const otherSession = connection('1', 'c', 's2', 't')
         listUserConnections.mockReturnValue([asked, sameSessionOtherTab, otherSession])
 
-        expect(wsSessionRevocation.closeUserConnections('1', { exceptSessionId: 's1' })).toBe(1)
+        expect(
+            wsSessionRevocation.closeUserConnections('1', { exceptSessionId: sessionIdOf('s1') }),
+        ).toBe(1)
 
         expect(otherSession.end).toHaveBeenCalledWith(4001)
         for (const spared of [asked, sameSessionOtherTab]) {
@@ -126,7 +130,7 @@ describe('closeUserConnections', () => {
 
         expect(
             wsSessionRevocation.closeUserConnections('1', {
-                exceptSessionId: 's9',
+                exceptSessionId: sessionIdOf('s9'),
                 userToken: 'old' as SessionToken,
             }),
         ).toBe(2)
@@ -236,7 +240,7 @@ describe('closeUserConnections: connections being opened (feat-210)', () => {
     it('marks them before it closes the registered ones, for the session or for the user', () => {
         listUserConnections.mockReturnValue([])
 
-        wsSessionRevocation.closeUserConnections('1', { sessionId: 's1' })
+        wsSessionRevocation.closeUserConnections('1', { sessionId: sessionIdOf('s1') })
         wsSessionRevocation.closeUserConnections('1')
 
         expect(revokeConnecting.mock.calls).toEqual([

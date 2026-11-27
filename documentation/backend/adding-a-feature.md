@@ -42,7 +42,7 @@ Claude Code може пройти ці кроки сам: у репозитор�
 | Виклик з фронтенду   | `packages/frontend/src/utils/api.ts`                                | редагування     |
 | Тест                 | `packages/backend/src/app/services/note/note-service.spec.ts`       | новий           |
 
-(*) Лише якщо id нотатки приходить зі шляху чи query (`parseNoteId`); маршрути списку й створення в туторіалі його не беруть.
+(*) `NoteId` додається до об'єднання `RowId` (завжди); `parseNoteId` — лише якщо id нотатки приходить зі шляху чи query, а маршрути списку й створення в туторіалі його не беруть.
 
 ## Крок 1. Схема вхідних даних у `shared`
 
@@ -114,7 +114,7 @@ pnpm --filter shared build
 
 Додайте таблицю в кінець [packages/backend/src/database/schema.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/schema.ts). Усі потрібні хелпери (`pgTable`, `bigserial`, `bigint`, `varchar`, `text`, `timestamp`, `index`) там уже імпортовано, а `users` оголошено вище у файлі.
 
-Id рядка — брендований тип ([ADR 0007](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0007-branded-types.md)). Оголосіть його в [database/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/ids.ts) як `export type NoteId = Brand<bigint, 'NoteId'>`, додайте до `import type` у `schema.ts`, а якщо id приходить зі шляху чи query, додайте `parseNoteId` поруч із `parseUserId` в [app/domain/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts). `.$type<…>()` змінює лише тип TypeScript: міграція та сама. Тоді id нотатки й id користувача не переплутати, а зовнішній рядок стає `NoteId` лише через `parseNoteId`. Приведення (`as NoteId`) поза `app/domain` — помилка ESLint (`local/no-brand-cast`), так само як приведення до контейнера бренду (`as NoteId[]`, `as Promise<NoteId>`, `as Record<string, NoteId>`) чи до параметра типу, обмеженого ним (feat-271).
+Id рядка — брендований тип ([ADR 0007](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0007-branded-types.md)). Оголосіть його в [database/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/ids.ts) як `export type NoteId = Brand<bigint, 'NoteId'>`, додайте до `import type` у `schema.ts` і до об'єднання `RowId` в [app/domain/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts) (`toEntityId` приймає лише `RowId`, feat-272), а якщо id приходить зі шляху чи query, додайте `parseNoteId` поруч із `parseUserId` в [app/domain/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts). `.$type<…>()` змінює лише тип TypeScript: міграція та сама. Тоді id нотатки й id користувача не переплутати, а зовнішній рядок стає `NoteId` лише через `parseNoteId`. Приведення (`as NoteId`) поза `app/domain` — помилка ESLint (`local/no-brand-cast`), так само як приведення до контейнера бренду (`as NoteId[]`, `as Promise<NoteId>`, `as Record<string, NoteId>`) чи до параметра типу, обмеженого ним (feat-271).
 
 ```ts
 export const notes = pgTable(

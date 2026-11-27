@@ -56,6 +56,15 @@ describe('secrets typed by state', () => {
         expect(otpCodeMatches(KEY, otpCodeOf('654321'), hash)).toBe(false)
     })
 
+    // feat-272: a stored value of the hash's length that is not hex decodes shorter; it is no
+    // match, never a RangeError from timingSafeEqual.
+    it('a corrupt stored OTP hash is no match, not a throw', () => {
+        const code = otpCodeOf('123456')
+        const corrupt = 'z'.repeat(64) as OtpHash
+        expect(() => otpCodeMatches(KEY, code, corrupt)).not.toThrow()
+        expect(otpCodeMatches(KEY, code, corrupt)).toBe(false)
+    })
+
     it('a recovery code is hashed only in its normalized form', () => {
         const raw = rawRecoveryCodeOf('AB0C-D1EF-GH2J-KM3N')
         const normalized = normalizeRecoveryCode(raw)

@@ -1,7 +1,7 @@
 import { Result } from 'better-result'
 import type { Cursor } from 'shared/brand'
 import { asCursor } from '#app/domain/wire.js'
-import { type SessionToken, newSessionToken } from '#app/domain/secrets.js'
+import { type SessionToken, newSessionToken, sessionIdOf } from '#app/domain/secrets.js'
 import { CURRENT_SESSION_REASON } from 'shared/errors'
 import type { SessionView } from 'shared'
 
@@ -170,7 +170,7 @@ export const sessionListService = {
         })
         if (target === null) return Result.err(notFound('Session', 'Session not found'))
 
-        wsSessionRevocation.closeUserConnections(userId, { sessionId: target.sid })
+        wsSessionRevocation.closeUserConnections(userId, { sessionId: sessionIdOf(target.sid) })
         userNotificationService.security(owner, 'session_revoked')
         sessionListChanged(userId)
         logger.info({ userId, sessionId: target.sid }, 'Session ended from the session list')
@@ -232,7 +232,7 @@ export const sessionListService = {
             String(userId),
             input.requestingSessionId === undefined
                 ? {}
-                : { exceptSessionId: input.requestingSessionId },
+                : { exceptSessionId: sessionIdOf(input.requestingSessionId) },
         )
 
         // Memory cleanup, not the revocation: every record left is already rejected.

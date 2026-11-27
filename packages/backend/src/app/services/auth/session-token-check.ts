@@ -1,5 +1,6 @@
 import { userRepository } from '#app/repositories/index.js'
-import { parseUserId } from '#app/domain/ids.js'
+import { parseUserId, type UserId } from '#app/domain/ids.js'
+import { sessionTokenOf, type SessionToken } from '#app/domain/secrets.js'
 import logger from '#logger'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import type { SessionTokenStatus } from '#vendor/utils/session/session-token-check.js'
@@ -15,18 +16,30 @@ import type { SessionTokenStatus } from '#vendor/utils/session/session-token-che
  * answer at all. Either way the pool rejects, and that is `unavailable` (503).
  */
 export const checkSessionToken = async (
-    userId: string,
-    userToken: string,
+    userId: UserId,
+    userToken: SessionToken,
 ): Promise<SessionTokenStatus> => {
-    // Text that is not a row id names no user (feat-263): a mismatch, never a lookup.
-    const id = parseUserId(userId)
-    if (id === null) return 'mismatch'
     try {
-        const current = await userRepository.findSessionToken(id)
+        const current = await userRepository.findSessionToken(userId)
         if (current === undefined) return 'mismatch'
         return safeEqual(current, userToken) ? 'ok' : 'mismatch'
     } catch (err) {
         logger.error({ err }, 'Session token lookup failed')
         return 'unavailable'
     }
+}
+
+/**
+ * feat-272: the hook the session layer calls (registered in app/start). The vendor layer holds the
+ * session record as text (Р13), so the ids are read here once: text that is not a row id names
+ * no user (feat-263), a mismatch and no lookup. Inside the app, checkSessionToken takes the
+ * brands, so the user id and the token cannot be swapped.
+ */
+export const checkSessionTokenText = (
+    userId: string,
+    userToken: string,
+): Promise<SessionTokenStatus> => {
+    const id = parseUserId(userId)
+    if (id === null) return Promise.resolve('mismatch')
+    return checkSessionToken(id, sessionTokenOf(userToken))
 }

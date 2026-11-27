@@ -1,6 +1,6 @@
 import { generateKey } from 'metautil'
 import redis, { withRedis } from '#database/redis.js'
-import { setWithTtlSeconds } from '#app/services/shared/redis-ttl.js'
+import { setWithTtlSeconds } from '#vendor/utils/redis/redis-ttl.js'
 import type { SessionInfo } from '#vendor/types/types.js'
 import configApp from '#config/app.js'
 import { isValidEntityId, seconds, type Seconds } from 'shared/brand'

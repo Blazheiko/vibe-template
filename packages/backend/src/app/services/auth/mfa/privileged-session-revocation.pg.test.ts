@@ -1,3 +1,4 @@
+import { seconds } from 'shared/brand'
 import type { Redis } from 'ioredis'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import { and, eq, sql } from 'drizzle-orm'
@@ -235,7 +236,9 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             )
             const completionId = crypto.randomUUID()
             const ticketKey = `mfa_ticket:${crypto.randomUUID()}`
-            expect(await context.auth.prepareLogin(plan, completionId, 300)).toBe('created')
+            expect(await context.auth.prepareLogin(plan, completionId, seconds(300))).toBe(
+                'created',
+            )
             await client.set(
                 storage.sanitizeRedisKey(ticketKey),
                 JSON.stringify({ completionId, state: 'completing' }),

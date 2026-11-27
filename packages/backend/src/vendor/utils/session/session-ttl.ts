@@ -1,3 +1,4 @@
+import type { Seconds } from 'shared/brand'
 import sessionConfig from '#config/session.js'
 
 /** Storage namespace of anonymous sessions stored in Redis: `session:anon_session:<id>`. */
@@ -8,5 +9,5 @@ export const ANON_SESSION_NAMESPACE = 'anon_session'
  * anonymous sessions (they hold data, e.g. OAuth state) expire like the cookie-held ones,
  * signed-in sessions keep the full age.
  */
-export const storedSessionTtl = (userToken: string): number =>
+export const storedSessionTtl = (userToken: string): Seconds =>
     userToken === ANON_SESSION_NAMESPACE ? sessionConfig.anonAgeSeconds : sessionConfig.ageSeconds

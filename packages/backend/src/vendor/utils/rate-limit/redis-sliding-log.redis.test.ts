@@ -1,3 +1,4 @@
+import { ms } from 'shared/brand'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
@@ -26,11 +27,11 @@ const CASES = [
     {
         name: 'max 3: three pass, then rejects',
         max: 3,
-        windowMs: 60_000,
+        windowMs: ms(60_000),
         attempts: 5,
     },
-    { name: 'max 1: one passes', max: 1, windowMs: 60_000, attempts: 3 },
-    { name: 'max 5: all pass', max: 5, windowMs: 60_000, attempts: 5 },
+    { name: 'max 1: one passes', max: 1, windowMs: ms(60_000), attempts: 3 },
+    { name: 'max 5: all pass', max: 5, windowMs: ms(60_000), attempts: 5 },
 ]
 
 const summarize = (decisions: RateLimitDecision[]) =>
@@ -43,8 +44,10 @@ describe.skipIf(!hasRedis)('Redis sliding log', () => {
         const redisDecisions: RateLimitDecision[] = []
         const key = `sl:${String(max)}:${String(attempts)}`
         for (let i = 0; i < attempts; i++) {
-            memoryDecisions.push(memory.consume(key, { windowMs, max }))
-            redisDecisions.push(await consumeRedisSlidingLog(redis, key, { windowMs, max }))
+            memoryDecisions.push(memory.consume(key, { windowMs: ms(windowMs), max }))
+            redisDecisions.push(
+                await consumeRedisSlidingLog(redis, key, { windowMs: ms(windowMs), max }),
+            )
         }
         expect(summarize(redisDecisions)).toEqual(summarize(memoryDecisions))
         for (const decision of redisDecisions) {
@@ -58,7 +61,7 @@ describe.skipIf(!hasRedis)('Redis sliding log', () => {
     it('does not store rejected attempts and keeps the TTL within the window', async () => {
         const key = 'sl:rejected'
         for (let i = 0; i < 6; i++) {
-            await consumeRedisSlidingLog(redis, key, { windowMs: 60_000, max: 2 })
+            await consumeRedisSlidingLog(redis, key, { windowMs: ms(60_000), max: 2 })
         }
         expect(await redis.zcard(key)).toBe(2)
         const ttl = await redis.pttl(key)
@@ -68,9 +71,9 @@ describe.skipIf(!hasRedis)('Redis sliding log', () => {
 
     it('frees a slot exactly when retryAfterMs says', async () => {
         const key = 'sl:retry'
-        await consumeRedisSlidingLog(redis, key, { windowMs: 300, max: 1 })
+        await consumeRedisSlidingLog(redis, key, { windowMs: ms(300), max: 1 })
         const rejected = await consumeRedisSlidingLog(redis, key, {
-            windowMs: 300,
+            windowMs: ms(300),
             max: 1,
         })
         expect(rejected.allowed).toBe(false)
@@ -78,7 +81,7 @@ describe.skipIf(!hasRedis)('Redis sliding log', () => {
         expect(rejected.retryAfterMs).toBeLessThanOrEqual(300)
         await sleep(rejected.retryAfterMs + 30)
         const again = await consumeRedisSlidingLog(redis, key, {
-            windowMs: 300,
+            windowMs: ms(300),
             max: 1,
         })
         expect(again.allowed).toBe(true)
@@ -88,7 +91,7 @@ describe.skipIf(!hasRedis)('Redis sliding log', () => {
         const key = 'sl:burst'
         const decisions = await Promise.all(
             Array.from({ length: 50 }, () =>
-                consumeRedisSlidingLog(redis, key, { windowMs: 60_000, max: 10 }),
+                consumeRedisSlidingLog(redis, key, { windowMs: ms(60_000), max: 10 }),
             ),
         )
         expect(decisions.filter((d) => d.allowed)).toHaveLength(10)
@@ -100,7 +103,7 @@ describe.skipIf(!hasRedis)('Redis sliding log', () => {
         await other.connect()
         try {
             const key = 'sl:shared'
-            const options = { windowMs: 60_000, max: 2 }
+            const options = { windowMs: ms(60_000), max: 2 }
             expect((await consumeRedisSlidingLog(redis, key, options)).allowed).toBe(true)
             expect((await consumeRedisSlidingLog(other, key, options)).allowed).toBe(true)
             expect((await consumeRedisSlidingLog(redis, key, options)).allowed).toBe(false)

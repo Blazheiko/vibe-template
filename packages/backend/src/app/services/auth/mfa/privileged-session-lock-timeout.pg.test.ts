@@ -452,7 +452,9 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         )
         const completionId = crypto.randomUUID()
         const ticketKey = `mfa_ticket:${crypto.randomUUID()}`
-        expect(await first.context.auth.prepareLogin(plan, completionId, 300)).toBe('created')
+        expect(await first.context.auth.prepareLogin(plan, completionId, seconds(300))).toBe(
+            'created',
+        )
         await client.set(
             storage.sanitizeRedisKey(ticketKey),
             JSON.stringify({ completionId, state: 'completing' }),
@@ -521,7 +523,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             newcomer.sessionToken,
         )
         const completionId = crypto.randomUUID()
-        expect(await context.auth.prepareLogin(plan, completionId, 300)).toBe('created')
+        expect(await context.auth.prepareLogin(plan, completionId, seconds(300))).toBe('created')
         const xid = await withTransaction((tx) => currentTransactionId(tx))
         const ticketId = newTicketId()
         await mfaTicketStore.create(

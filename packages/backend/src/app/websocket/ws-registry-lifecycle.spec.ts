@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SessionToken } from '#app/domain/secrets.js'
+import { sessionIdOf, type SessionToken } from '#app/domain/secrets.js'
 
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 
@@ -136,6 +136,18 @@ beforeEach(() => {
 })
 
 describe('connection registry lifecycle (feat-107)', () => {
+    // feat-272 (Р13): an id that is not a row id is logged and its socket closed, never left open.
+    it.each(['abc', '0', '007'])(
+        'a socket whose user id is %j is closed and not registered',
+        async (userId) => {
+            const conn = connection(userId)
+            await websocketCoordinator.handleConnected(conn.ws, conn.userData)
+            expect(conn.endedWith).toHaveLength(1)
+            expect(wsConnectionRegistry.getConnection(userId, conn.userData.uuid)).toBeUndefined()
+            expect(accessReads()).toBe(0)
+        },
+    )
+
     it('a socket that closes while its role is read is never registered', async () => {
         const conn = connection('9101')
 
@@ -388,7 +400,9 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
         // The session was still stored when it was read; the logout lands now, finds nothing
         // in the registry to close, and the token stays the same.
-        expect(wsSessionRevocation.closeUserConnections('9111', { sessionId: 's1' })).toBe(0)
+        expect(
+            wsSessionRevocation.closeUserConnections('9111', { sessionId: sessionIdOf('s1') }),
+        ).toBe(0)
         resolveAccess({ role: 'user', sessionToken: 'u1' })
         await connected
 
@@ -401,7 +415,9 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         const conn = connection('9112')
 
         const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
-        wsSessionRevocation.closeUserConnections('9112', { sessionId: 'another-session' })
+        wsSessionRevocation.closeUserConnections('9112', {
+            sessionId: sessionIdOf('another-session'),
+        })
         resolveAccess({ role: 'user', sessionToken: 'u1' })
         await connected
 

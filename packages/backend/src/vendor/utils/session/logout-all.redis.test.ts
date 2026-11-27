@@ -115,9 +115,9 @@ const { default: createContext } = await import('#vendor/utils/context/http-cont
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { default: AuthController } = await import('#app/controllers/http/auth/auth-controller.js')
 const { registerSessionTokenChecker } = await import('./session-token-check.js')
-const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
+const { checkSessionTokenText } = await import('#app/services/auth/session-token-check.js')
 
-registerSessionTokenChecker(checkSessionToken)
+registerSessionTokenChecker(checkSessionTokenText)
 
 const admin = createTestRedis(PREFIX)
 const USER_TOKEN = 'logoutAllUserToken01'

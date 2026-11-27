@@ -1,3 +1,4 @@
+import { seconds } from 'shared/brand'
 import type { Redis } from 'ioredis'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -125,9 +126,9 @@ const { default: executeMiddlewares } =
 const { default: createContext } = await import('#vendor/utils/context/http-context.js')
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { registerSessionTokenChecker } = await import('./session-token-check.js')
-const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
+const { checkSessionTokenText } = await import('#app/services/auth/session-token-check.js')
 
-registerSessionTokenChecker(checkSessionToken)
+registerSessionTokenChecker(checkSessionTokenText)
 
 const admin = createTestRedis(PREFIX)
 const USER_TOKEN = 'sessionStoreToken001'
@@ -634,9 +635,11 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
     it('a pending record opens nothing and is not listed', async () => {
         const request = await anonymousRequest()
         const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
-        expect(await request.context.auth.prepareLogin(plan, 'c1', 300)).toBe('created')
-        expect(await request.context.auth.prepareLogin(plan, 'c1', 300)).toBe('exists')
-        expect(await request.context.auth.prepareLogin(plan, 'other', 300)).toBe('conflict')
+        expect(await request.context.auth.prepareLogin(plan, 'c1', seconds(300))).toBe('created')
+        expect(await request.context.auth.prepareLogin(plan, 'c1', seconds(300))).toBe('exists')
+        expect(await request.context.auth.prepareLogin(plan, 'other', seconds(300))).toBe(
+            'conflict',
+        )
         expect((await recordOf(plan.sessionId))?.data['pending']).toBe(true)
         expect(await indexMembers()).toEqual([])
         expect(await authenticates(plan.sessionId)).toBe(false)
@@ -650,7 +653,7 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
     it('two activations of one completion: one session, one "activated", one index member', async () => {
         const first = await anonymousRequest()
         const plan = first.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
-        await first.context.auth.prepareLogin(plan, 'c2', 300)
+        await first.context.auth.prepareLogin(plan, 'c2', seconds(300))
         await writeTicket('completing', 'c2')
         const second = await anonymousRequest()
         const onEffects = vi.fn()
@@ -687,7 +690,7 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
     it('a late request with a stale snapshot does not bring back a session that signed out', async () => {
         const request = await anonymousRequest()
         const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
-        await request.context.auth.prepareLogin(plan, 'c3', 300)
+        await request.context.auth.prepareLogin(plan, 'c3', seconds(300))
         await writeTicket('completing', 'c3')
         expect(await request.context.auth.activateLogin(plan, TICKET, 'c3')).toBe('activated')
         // The browser came back (ticket gone), then signed out (record deleted, no rotation).
@@ -719,7 +722,7 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
             recoveryAuth,
             USER_TOKEN,
         )
-        await request.context.auth.prepareLogin(plan, 'c4', 300)
+        await request.context.auth.prepareLogin(plan, 'c4', seconds(300))
         await admin.del(`session:${USER_TOKEN}:${plan.sessionId}`)
         await writeTicket('completing', 'c4')
         expect(await request.context.auth.activateLogin(plan, TICKET, 'c4')).toBe('activated')
@@ -730,7 +733,7 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
     it('a ticket of another completion or not completing activates nothing', async () => {
         const request = await anonymousRequest()
         const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
-        await request.context.auth.prepareLogin(plan, 'c5', 300)
+        await request.context.auth.prepareLogin(plan, 'c5', seconds(300))
         await writeTicket('completing', 'someone-else')
         expect(await request.context.auth.activateLogin(plan, TICKET, 'c5')).toBe('gone')
         await writeTicket('open', 'c5')

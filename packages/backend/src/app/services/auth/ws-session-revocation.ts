@@ -1,5 +1,5 @@
 import { userRepository } from '#app/repositories/index.js'
-import type { SessionToken } from '#app/domain/secrets.js'
+import type { SessionId, SessionToken } from '#app/domain/secrets.js'
 import { asUserId } from '#app/domain/ids.js'
 import {
     wsConnectionRegistry,
@@ -89,7 +89,11 @@ export const wsSessionRevocation = {
      */
     closeUserConnections(
         userId: string,
-        options: { sessionId?: string; exceptSessionId?: string; userToken?: SessionToken } = {},
+        options: {
+            sessionId?: SessionId
+            exceptSessionId?: SessionId
+            userToken?: SessionToken
+        } = {},
     ): number {
         try {
             const { sessionId, exceptSessionId, userToken } = options
@@ -171,7 +175,7 @@ export const wsSessionRevocation = {
     },
 
     /** feat-210: whether the session a connection is being opened from is still stored. */
-    isSessionStored(sessionId: string, userToken: SessionToken): Promise<boolean> {
+    isSessionStored(sessionId: SessionId, userToken: SessionToken): Promise<boolean> {
         return sessionExists(sessionId, userToken)
     },
 

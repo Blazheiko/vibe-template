@@ -5,6 +5,8 @@ import logger from '#vendor/utils/logger.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 import { storedSessionTtl } from '#vendor/utils/session/session-ttl.js'
+import { secondsArg } from '#vendor/utils/redis/redis-ttl.js'
+import { seconds, toMs, type Seconds } from 'shared/brand'
 import { isAfter, type IndexPosition } from '#vendor/utils/session/session-page-cursor.js'
 
 // feat-233 (Р2): the sessions of a user, for the session list. Two keys per users.session_token,
@@ -111,6 +113,12 @@ return 1
 
 const DAY_SECONDS = 24 * 60 * 60
 
+/**
+ * feat-272 (Р7): the absolute lifetime of a signed-in session (SESSION_MAX_AGE_DAYS), as the
+ * EXPIRE of its index keys takes it and as the cutoff of the index scores (ms) needs it.
+ */
+const sessionMaxAge = (): Seconds => seconds(sessionConfig.maxAgeDays * DAY_SECONDS)
+
 export const recordKey = (userToken: string, sessionId: string): string =>
     `session:${userToken}:${sessionId}`
 export const indexKey = (userToken: string): string => `session_index:${userToken}`
@@ -149,7 +157,7 @@ export const createIndexedSession = async (
     createdAtMs: number,
     sanitize: (key: string) => string,
 ): Promise<void> => {
-    const maxAgeSeconds = sessionConfig.maxAgeDays * DAY_SECONDS
+    const maxAge = sessionMaxAge()
     await withRedis(() =>
         redis.eval(
             SESSION_CREATE_LUA,
@@ -158,12 +166,12 @@ export const createIndexedSession = async (
             sanitize(indexKey(userToken)),
             sanitize(metaKey(userToken)),
             serialize(session),
-            String(storedSessionTtl(userToken)),
+            secondsArg(storedSessionTtl(userToken)),
             publicId,
             String(createdAtMs),
             JSON.stringify({ sid: session.id, seen: createdAtMs }),
-            String(createdAtMs - maxAgeSeconds * 1000),
-            String(maxAgeSeconds),
+            String(createdAtMs - toMs(maxAge)),
+            secondsArg(maxAge),
         ),
     )
 }
@@ -470,7 +478,7 @@ return 1
 export const preparePendingSession = async (
     session: SessionInfo,
     userToken: string,
-    ttlSeconds: number,
+    ttlSeconds: Seconds,
     completionId: string,
     sanitize: (key: string) => string,
 ): Promise<'created' | 'exists' | 'conflict'> => {
@@ -480,7 +488,7 @@ export const preparePendingSession = async (
             1,
             sanitize(recordKey(userToken, session.id)),
             serialize(session),
-            String(Math.max(1, Math.ceil(ttlSeconds))),
+            secondsArg(seconds(Math.max(1, Math.ceil(ttlSeconds)))),
             completionId,
         ),
     )
@@ -499,7 +507,7 @@ export const activatePendingSession = async (input: {
     createdAtMs: number
     sanitize: (key: string) => string
 }): Promise<ActivationOutcome> => {
-    const maxAgeSeconds = sessionConfig.maxAgeDays * DAY_SECONDS
+    const maxAge = sessionMaxAge()
     const { session, userToken, publicId, createdAtMs, sanitize } = input
     const result = (await withRedis(() =>
         redis.eval(
@@ -511,12 +519,12 @@ export const activatePendingSession = async (input: {
             sanitize(metaKey(userToken)),
             input.completionId,
             serialize(session),
-            String(storedSessionTtl(userToken)),
+            secondsArg(storedSessionTtl(userToken)),
             publicId,
             String(createdAtMs),
             JSON.stringify({ sid: session.id, seen: createdAtMs }),
-            String(createdAtMs - maxAgeSeconds * 1000),
-            String(maxAgeSeconds),
+            String(createdAtMs - toMs(maxAge)),
+            secondsArg(maxAge),
             session.id,
         ),
     )) as [string, number]

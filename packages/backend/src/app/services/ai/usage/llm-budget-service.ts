@@ -1,5 +1,5 @@
 import redis from '#database/redis-rate-limit.js'
-import { msArg } from '#app/services/shared/redis-ttl.js'
+import { msArg } from '#vendor/utils/redis/redis-ttl.js'
 import { diffMs, ms, seconds, toSecondsCeil, unixMs, type Seconds } from 'shared/brand'
 import logger from '#logger'
 import type { UserId } from '#app/domain/ids.js'

@@ -1,5 +1,5 @@
 import redis from '#database/redis-rate-limit.js'
-import { msArg } from '#app/services/shared/redis-ttl.js'
+import { msArg } from '#vendor/utils/redis/redis-ttl.js'
 import type { ThrottlePolicy } from '#config/throttle-policies.js'
 import { rateLimitKeyForIp } from '#vendor/utils/network/ip-address.js'
 

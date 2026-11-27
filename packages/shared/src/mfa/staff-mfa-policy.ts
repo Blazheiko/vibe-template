@@ -3,6 +3,7 @@
 // can:, ws_can:, ws-role-sync, rows 9–10 of the proof matrix), so the passkey mode of feat-248
 // changes behaviour in one place.
 
+import { addMs, ms, unixMs, type UnixMs } from '../brand/index.js'
 import {
     isActiveRecovery,
     latestMark,
@@ -30,9 +31,9 @@ export interface StaffMfaPolicy {
      */
     sessionDeadline(
         auth: SessionAuthState | undefined | null,
-        now: number,
+        now: UnixMs,
         maxAgeHours: number,
-    ): number | null
+    ): UnixMs | null
     /** The step-up proofs rows 9–10 accept. */
     readonly stepUpProofs: readonly ProofMethod[]
 }
@@ -51,7 +52,7 @@ const anyPolicy: StaffMfaPolicy = {
         }
         const mark = latestMark(auth, ANY_FACTOR_MARKS, now)
         if (mark === null) return null
-        const deadline = mark + maxAgeHours * 3_600_000
+        const deadline = addMs(unixMs(mark), ms(maxAgeHours * 3_600_000))
         return now < deadline ? deadline : null
     },
     stepUpProofs: ['totp', 'webauthn'],
@@ -78,7 +79,7 @@ const passkeyPolicy: StaffMfaPolicy = {
         }
         const mark = latestMark(auth, PASSKEY_MARKS, now)
         if (mark === null) return null
-        const deadline = mark + maxAgeHours * 3_600_000
+        const deadline = addMs(unixMs(mark), ms(maxAgeHours * 3_600_000))
         return now < deadline ? deadline : null
     },
     stepUpProofs: ['webauthn'],
@@ -92,6 +93,6 @@ export function staffMfaPolicy(mode: StaffFactorMode): StaffMfaPolicy {
 export const staffSessionOk = (
     policy: StaffMfaPolicy,
     auth: SessionAuthState | undefined | null,
-    now: number,
+    now: UnixMs,
     maxAgeHours: number,
 ): boolean => policy.sessionDeadline(auth, now, maxAgeHours) !== null

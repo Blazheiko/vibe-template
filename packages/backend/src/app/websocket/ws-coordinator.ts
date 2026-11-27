@@ -1,6 +1,6 @@
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { parseUserId } from '#app/domain/ids.js'
-import { presentedSessionTokenOf } from '#app/domain/secrets.js'
+import { presentedSessionTokenOf, sessionIdOf } from '#app/domain/secrets.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
 import { touchSessionFromWs } from '#vendor/utils/session/ws-session-touch.js'
@@ -57,9 +57,25 @@ const drainDisconnects = async (timeoutMs: number): Promise<boolean> => {
 const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promise<void> => {
     const { userId, sessionId } = userData
     if (userId === undefined || sessionId === undefined) return
-    // feat-271 (Р13): the id the upgrade checked, read by its brand constructor once.
+    // feat-271 (Р13): the id the upgrade checked, read by its brand constructor once. feat-272:
+    // one that is not a row id is logged and its socket closed, as a revoked session is; a bare
+    // return would leave an unregistered socket open.
     const ownerId = parseUserId(userId)
-    if (ownerId === null) return
+    if (ownerId === null) {
+        logger.warn(
+            { socketUuid: userData.uuid },
+            'WS connection closed at connect: its user id is not a row id',
+        )
+        try {
+            endSessionExpired(ws)
+        } catch (err) {
+            logger.error(
+                { err, socketUuid: userData.uuid },
+                'Error closing a WS with a bad user id',
+            )
+        }
+        return
+    }
     const connectedAt = new Date()
 
     // feat-210: until the reads below answer, the connection is in no list a revocation closes.
@@ -77,7 +93,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
             // A logout of one session deletes its stored record and rotates nothing.
             userToken === undefined
                 ? Promise.resolve(false)
-                : wsSessionRevocation.isSessionStored(sessionId, userToken),
+                : wsSessionRevocation.isSessionStored(sessionIdOf(sessionId), userToken),
         ])
         // feat-243 (review 2026-11-21): a role change signalled while the role was read is not
         // seen by wsRoleSync (this connection is not registered yet); it marked the connection,
@@ -105,7 +121,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         revokedMeanwhile ||
         !sessionStored ||
         access === undefined ||
-        access.sessionToken !== userData.userToken
+        access.sessionToken !== userToken
     ) {
         logger.info(
             { userId, socketUuid: userData.uuid },

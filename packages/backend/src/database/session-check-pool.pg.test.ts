@@ -37,7 +37,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
     const { sessionCheckPool, createSessionCheckPool, SESSION_CHECK_POOL_MAX } =
         await import('#database/session-check-db.js')
     const { connectionOptions } = await import('#database/pool-options.js')
-    const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
+    const { checkSessionTokenText } = await import('#app/services/auth/session-token-check.js')
 
     const now = Date.now()
     let userId = uid(0)
@@ -93,8 +93,8 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
     })
 
     it('answers normally through the dedicated pool', async () => {
-        await expect(checkSessionToken(String(userId), userToken)).resolves.toBe('ok')
-        await expect(checkSessionToken(String(userId), 'rotated')).resolves.toBe('mismatch')
+        await expect(checkSessionTokenText(String(userId), userToken)).resolves.toBe('ok')
+        await expect(checkSessionTokenText(String(userId), 'rotated')).resolves.toBe('mismatch')
     })
 
     describe('a lookup that hangs on a table lock', () => {
@@ -116,7 +116,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
             const holder = await holdLock()
             try {
                 const started = Date.now()
-                const status = await checkSessionToken(String(userId), userToken)
+                const status = await checkSessionTokenText(String(userId), userToken)
                 const elapsed = Date.now() - started
 
                 expect(status).toBe('unavailable')
@@ -138,7 +138,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
                 const count = SESSION_CHECK_POOL_MAX * 2
                 const results = await Promise.all(
                     Array.from({ length: count }, () =>
-                        checkSessionToken(String(userId), userToken),
+                        checkSessionTokenText(String(userId), userToken),
                     ),
                 )
                 expect(results).toEqual(Array(count).fill('unavailable'))
@@ -149,7 +149,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
             }
 
             // The lock is gone; the pool serves again without a restart.
-            await expect(checkSessionToken(String(userId), userToken)).resolves.toBe('ok')
+            await expect(checkSessionTokenText(String(userId), userToken)).resolves.toBe('ok')
             expect(sessionCheckPool.totalCount).toBeLessThanOrEqual(SESSION_CHECK_POOL_MAX)
         })
 
@@ -186,7 +186,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
         it('does not touch the main pool: ordinary queries keep their own connections', async () => {
             const holder = await holdLock()
             try {
-                const stuck = checkSessionToken(String(userId), userToken)
+                const stuck = checkSessionTokenText(String(userId), userToken)
                 // The lock blocks every read of `users`, but the main pool is not the
                 // one waiting: a query on another table answers at once.
                 const started = Date.now()

@@ -9,6 +9,7 @@ import {
     newRawToken,
     otpCodeOf,
     sessionBindingHashOf,
+    sessionIdOf,
     sessionTokenOf,
     type MfaAttemptId,
     type MfaCompletionId,
@@ -21,6 +22,7 @@ import {
 import type { ITotpFactorRepository } from '#app/repositories/auth/totp-factor-repository.js'
 import type { verifyOtpVerificationCode as VerifyOtp } from '#app/services/auth/otp-verification-hash.js'
 import type { wsSessionRevocation as Revocation } from '#app/services/auth/ws-session-revocation.js'
+import type { checkSessionToken as CheckSessionToken } from '#app/services/auth/session-token-check.js'
 import { uid } from '../test-support/ids.js'
 
 // feat-271 (ADR 0007, plan Р5, T14, T30): the secrets and the MFA ids the review found without a
@@ -57,10 +59,27 @@ describe('secret brands at their real call sites', () => {
     it('isSessionStored takes the session id, then the session token', () => {
         const revocation = {} as typeof Revocation
         const token = sessionTokenOf('token-1')
+        const sessionId = sessionIdOf('session-1')
         const typeCases = (): unknown[] => [
-            revocation.isSessionStored('session-1', token),
+            revocation.isSessionStored(sessionId, token),
             // @ts-expect-error the arguments swapped
-            revocation.isSessionStored(token, 'session-1'),
+            revocation.isSessionStored(token, sessionId),
+            // @ts-expect-error feat-272 (T30): a bare string is not a session id
+            revocation.isSessionStored('session-1', token),
+        ]
+        expect(typeof typeCases).toBe('function')
+    })
+
+    // feat-272: the internal check takes the brands; only the session layer hook takes text.
+    it('checkSessionToken takes the user id, then the session token', () => {
+        const check = (() => Promise.resolve('ok')) as typeof CheckSessionToken
+        const token = sessionTokenOf('token-1')
+        const typeCases = (): unknown[] => [
+            check(uid(7), token),
+            // @ts-expect-error the arguments swapped
+            check(token, uid(7)),
+            // @ts-expect-error the text of a session record is read by the hook, not here
+            check('7', 'token-1'),
         ]
         expect(typeof typeCases).toBe('function')
     })
