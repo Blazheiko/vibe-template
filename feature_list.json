@@ -2723,6 +2723,16 @@
             "dependencies": ["feat-272"],
             "status": "done",
             "evidence": "PR #889 (merge cadb9e5), status #888 (registry), #890 (review). otpCodeMatches rejects a stored hash that is not exactly 64 lowercase hex characters (suffix regression of feat-272, tests for junk, odd digit, newline, uppercase); StaffDeadline = UnixMs | NO_STAFF_DEADLINE ('none') in the admin WS channel, staffAccessDeadline?: UnixMs absent while the rule is off; closeUserConnections(owner: UserId, …) and SessionId across ws-connection-registry; newSmsChallengeId() as the default of sms_auth_challenges.id (db:generate: no changes); toMs(challengeTtlSeconds) in webauthn-ceremony, UnixMs / Seconds in shared/mfa session-auth and proof-policy, the request-session cookie maxAge as Seconds. CI on b2b6311 (merge of main): test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45977968281/job/140434389133); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45977968285/job/140434388897); quality, e2e, Docs green; local make check exit 0 (backend 3933 tests); docs:build + docs:verify passed."
+        },
+        {
+            "id": "feat-274",
+            "name": "WS Context Without Session",
+            "description": "Remove the unused session from the WebSocket dispatch path. ws-context.ts takes _session and ignores it, and WsContext carries session: null / auth: null that nothing reads; wsSessionHandler builds a Session with mutating methods on every message only for the dispatcher to drop it. (1) wsSessionHandler keeps its checks (token format, record, userId, sessionToken current; getSession still renews the sliding TTL and checks the max age) and answers { kind: 'ok' } | missing | unavailable. (2) The dispatcher and createWsContext take no session; WsContext loses session and auth (handlers use context.userData, the same object as ws.getUserData()). (3) Tests: exact ok result with the getSession and token-check calls, invalid token format and empty userId cases, no dispatch on missing, a ws-context spec (compile-time and runtime absence of session / auth). (4) Docs in both locales: auth.md, controllers.md (WsContext, userData table with auth, getUserData on a closed socket), request-lifecycle.md (order: envelope, route lookup, session check, then route limit and payload validation; binary closes 1003), websocket.md. Plan: docs/plan/ws-session-info-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "refactor/ws-context-session",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
