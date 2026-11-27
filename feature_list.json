@@ -2743,6 +2743,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #897 (merge 0e58e2e), entry #896, status #898 (review). Dead code removed (start/validators.ts, ValidatorFunction, isValidUrl, commented-out dispatcher lines); ResponseData.setHeader replaces a header of the same name (case-insensitive, first spelling and position kept), http-rate-limit.spec on the real createResponseData with both 429 sources (L1 and route: one Retry-After and one X-RateLimit-* set each); one module-level TextDecoder with multipart-parse.spec (two Unicode fields and a file through the real getParts); static cache keys through toCacheKey (POSIX and win32 tests); node:crypto, #vendor/* instead of ../ and #vendor/utils/logger.js inside vendor; ESLint refuses bare Node built-ins in packages/backend/src and #logger / ../ in vendor, the ADR 0005/0006 paths repeated in every block (negative check: all temporary violations in vendor and src/app fail lint). CI on a86a920 (merge of main): test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46025951534/job/140597273247); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46025951564/job/140597274214); quality, e2e, e2e-live, build green; local make check exit 0 (backend 3952 tests); docs:build + docs:verify passed; manual prod-local run: cached shell on / and a deep path, ETag + 304 with If-None-Match, 429 from the route limit and from L1 with single headers, one Location on the OAuth callback error. Not run by hand: avatar upload (covered by the multipart specs)."
+        },
+        {
+            "id": "feat-276",
+            "name": "Vendor Cleanup Review Fixes",
+            "description": "Review fixes after feat-275 (PR #897). (1) The 429 tests of http-rate-limit.spec.ts that expect Retry-After: 60 (two from feat-275 and the older route-limit one) depend on real time: a second between the requests gives 59; they pin the clock with vi.useFakeTimers() / vi.setSystemTime(). (2) The ESLint list of Node built-ins drops names starting with _ (_http_common, _stream_readable and 12 more), so those import without node:; the filter goes. (3) main-service.ts setHeaderAndCookie pushes into responseData.headers past setHeader; it calls setHeader, the documented way. Out of scope: a readonly headers type (server.ts clears the array with length = 0).",
+            "owner": "Blazheiko",
+            "branch": "fix/vendor-cleanup-review",
+            "dependencies": ["feat-275"],
+            "status": "review",
+            "evidence": ""
         }
     ]
 }
