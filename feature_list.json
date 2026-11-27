@@ -2731,8 +2731,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/ws-context-session",
             "dependencies": [],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #893 (merge 446434c), status #892 (in_progress), #894 (review). wsSessionHandler answers only the verdict (ok / missing / unavailable), its checks unchanged (token format, record with the sliding TTL and max age, userId, sessionToken current); the Session with mutating methods is no longer built per message; the dispatcher and createWsContext take no session; WsContext has no session / auth (handlers read userData = ws.getUserData()). Tests: exact ok result with the getSession / token-check calls, invalid token format, session without userId, no dispatch on missing, new ws-context.spec.ts (compile-time and runtime). Docs (both locales): auth, controllers, request-lifecycle, websocket - the order of the WS checks, the service_unavailable envelope, getUserData on a closed socket, the userData table (auth, parseUserId). CI on d642947: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46009340859/job/140540540345); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46009340972/job/140540540205); quality, e2e, e2e-live, Docs green (again on 819987b); local make check exit 0 (backend 3942 tests); docs:build + docs:verify passed; manual dev-playground check passed (owner). Left out: narrowing WsContext.userData to non-null."
         }
     ]
 }
