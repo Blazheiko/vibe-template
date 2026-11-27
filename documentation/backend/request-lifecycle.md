@@ -174,18 +174,19 @@ sequenceDiagram
     U-->>Client: 401 Unauthorized
   end
   U->>Hooks: onUpgrade(token)
-  Hooks-->>U: sessionId, userId, userToken or null
+  Hooks-->>U: UpgradeTokenResult (ok / missing / unavailable)
   U-->>Client: res.upgrade(userData)
   Client->>M: JSON message
-  M->>M: validate envelope, wsSessionHandler
-  M->>D: message, session
+  M->>M: message budget, validate envelope, route lookup
+  M->>M: wsSessionHandler (ok / missing / unavailable)
+  M->>D: message, userData
   D->>D: rate limit, validator, middlewares, handler
   D-->>Client: JSON response
 ```
 
-- **Upgrade** ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts), `handleUpgrade`): спершу ліміт upgrade за IP (`429`/`503`), потім токен: він передається першим значенням `Sec-WebSocket-Protocol`, друге — тип застосунку (`web`/`pwa`). Невалідний формат → `401`. Хук `onUpgrade` (у [app/start/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/index.ts) це `wsSessionAuth.verifyUpgradeToken`) повертає дані доступу, які кладуться в `userData`.
-- **Повідомлення** (`onMessage`): бінарні повідомлення ігноруються; рядок `ping` → `pong`; інакше JSON валідується зареєстрованим валідатором, перевіряється сесія (`wsSessionHandler`; без сесії — `closeExpiredSession`), і повідомлення передається в [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts).
-- **Диспетчер**: маршрут шукається за частиною `event` до `:`, далі `checkRateLimitWs`, `validateRoutePayload` (якщо є `validator`), middleware і handler. Невідома подія → помилка `not_found` («Route not found», [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts); детальніше — [WebSocket](/backend/websocket)), винятки класифікує той самий `classifyError`: помилки валідації → `validation_failed`, недоступність Redis → `service_unavailable`, решта → `internal_error`.
+- **Upgrade** ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts), `handleUpgrade`): спершу ліміт upgrade за IP (`429`/`503`), потім токен: він передається першим значенням `Sec-WebSocket-Protocol`, друге — тип застосунку (`web`/`pwa`). Невалідний формат → `401`. Хук `onUpgrade` (у [app/start/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/index.ts) це `wsSessionAuth.verifyUpgradeToken`) повертає `UpgradeTokenResult`: `ok` з даними доступу, які кладуться в `userData`, `missing` → `401`, `unavailable` → `503` з `Retry-After: 1`.
+- **Повідомлення** (`onMessage`): бінарне повідомлення закриває з'єднання з кодом `1003`; рядок `ping` → `pong` (у heartbeat власний бюджет); далі бюджет повідомлень, JSON валідується зареєстрованим валідатором конверта, і маршрут шукається за частиною `event` до `:`. Невідома подія → помилка `not_found` («Route not found») без читання сесії. Для відомого маршруту перевіряється сесія (`wsSessionHandler`): `missing` → `closeExpiredSession` (`unauthorized`, закриття з кодом `4001`), `unavailable` → `service_unavailable`, з'єднання лишається відкритим. Лише після `ok` повідомлення передається в [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts); сесію диспетчер не отримує.
+- **Диспетчер**: бере маршрут із тієї самої таблиці, далі `checkRateLimitWs`, `validateRoutePayload` (якщо є `validator`), створює `WsContext` (без `session` і `auth`, користувач — `userData`), middleware і handler. Отже, сесію перевіряють до ліміту маршруту і валідації payload (детальніше — [WebSocket](/backend/websocket)); винятки класифікує той самий `classifyError`: помилки валідації → `validation_failed`, недоступність Redis → `service_unavailable`, решта → `internal_error`.
 
 Про сесії, CSRF і автентифікацію — див. [Автентифікація](/backend/auth) і [Безпека](/backend/security).
 

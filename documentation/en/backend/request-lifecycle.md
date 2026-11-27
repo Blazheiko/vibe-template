@@ -174,18 +174,19 @@ sequenceDiagram
     U-->>Client: 401 Unauthorized
   end
   U->>Hooks: onUpgrade(token)
-  Hooks-->>U: sessionId, userId, userToken or null
+  Hooks-->>U: UpgradeTokenResult (ok / missing / unavailable)
   U-->>Client: res.upgrade(userData)
   Client->>M: JSON message
-  M->>M: validate envelope, wsSessionHandler
-  M->>D: message, session
+  M->>M: message budget, validate envelope, route lookup
+  M->>M: wsSessionHandler (ok / missing / unavailable)
+  M->>D: message, userData
   D->>D: rate limit, validator, middlewares, handler
   D-->>Client: JSON response
 ```
 
-- **Upgrade** ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts), `handleUpgrade`): first the per-IP upgrade limit (`429`/`503`), then the token: it is passed as the first value of `Sec-WebSocket-Protocol`, the second is the application type (`web`/`pwa`). An invalid format → `401`. The `onUpgrade` hook (in [app/start/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/index.ts) it is `wsSessionAuth.verifyUpgradeToken`) returns the access data that is put into `userData`.
-- **Messages** (`onMessage`): binary messages are ignored; the string `ping` → `pong`; otherwise the JSON is validated by the registered validator, the session is checked (`wsSessionHandler`; with no session — `closeExpiredSession`), and the message is passed to [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts).
-- **Dispatcher**: the route is looked up by the part of `event` before `:`, then `checkRateLimitWs`, `validateRoutePayload` (if there is a `validator`), middleware and the handler. An unknown event → a `not_found` error ("Route not found", [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts); more in [WebSocket](/en/backend/websocket)), exceptions are classified by the same `classifyError`: validation errors → `validation_failed`, Redis unavailability → `service_unavailable`, everything else → `internal_error`.
+- **Upgrade** ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts), `handleUpgrade`): first the per-IP upgrade limit (`429`/`503`), then the token: it is passed as the first value of `Sec-WebSocket-Protocol`, the second is the application type (`web`/`pwa`). An invalid format → `401`. The `onUpgrade` hook (in [app/start/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/index.ts) it is `wsSessionAuth.verifyUpgradeToken`) returns an `UpgradeTokenResult`: `ok` with the access data that is put into `userData`, `missing` → `401`, `unavailable` → `503` with `Retry-After: 1`.
+- **Messages** (`onMessage`): a binary message closes the connection with code `1003`; the string `ping` → `pong` (heartbeats have a budget of their own); then the message budget, the JSON is validated by the registered envelope validator, and the route is looked up by the part of `event` before `:`. An unknown event → a `not_found` error ("Route not found") without reading the session. For a known route the session is checked (`wsSessionHandler`): `missing` → `closeExpiredSession` (`unauthorized`, closed with code `4001`), `unavailable` → `service_unavailable`, the connection staying open. Only after `ok` is the message passed to [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts); the dispatcher gets no session.
+- **Dispatcher**: takes the route from the same table, then `checkRateLimitWs`, `validateRoutePayload` (if there is a `validator`), creates the `WsContext` (no `session` or `auth`, the user is `userData`), middleware and the handler. So the session is checked before the route limit and payload validation (more in [WebSocket](/en/backend/websocket)); exceptions are classified by the same `classifyError`: validation errors → `validation_failed`, Redis unavailability → `service_unavailable`, everything else → `internal_error`.
 
 For sessions, CSRF and authentication, see [Authentication](/en/backend/auth) and [Security](/en/backend/security).
 

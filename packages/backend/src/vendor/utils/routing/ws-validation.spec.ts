@@ -57,7 +57,6 @@ describe('ws-api-dispatcher validation', () => {
             {
                 token: '',
             } as never,
-            {} as never,
             {
                 [route.url]: { ...route, responseCheck: null },
             },
@@ -100,7 +99,6 @@ describe('ws-api-dispatcher runtime response validation (feat-044)', () => {
             { event: 'user_get', timestamp: 1, payload: null },
             { getUserData: () => ({ token: '' }) } as never,
             { token: '' } as never,
-            {} as never,
             { [route.url]: { ...route, responseCheck } },
         )
     }
@@ -178,7 +176,6 @@ describe('ws-api-dispatcher error classification', () => {
             { event: 'event_x', timestamp: 1, payload: {} },
             { getUserData: () => ({ token: '' }) } as never,
             { token: '', userId: '9' } as never,
-            {} as never,
             { [route.url]: { ...route, responseCheck: null } },
         )
     }

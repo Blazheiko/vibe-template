@@ -105,9 +105,11 @@ export interface WsContext<TPayload = unknown> {
     ws: MyWebSocket
     wsData: WsData<TPayload>
     responseData: WsResponseData
+    /**
+     * The connection's data, the same object as `ws.getUserData()` (feat-274: no session or auth
+     * on WsContext; the session is checked before dispatch, the user comes from here).
+     */
     userData: UserConnection | null
-    session: null
-    auth: null
     logger: Logger
     /** Aborted when this WebSocket connection closes. */
     signal: AbortSignal

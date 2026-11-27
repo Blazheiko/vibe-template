@@ -121,23 +121,18 @@ describe('onMessage application requests', () => {
         await handlers.onMessage(ws as never, message(APP_MESSAGE), false, ROUTES)
 
         expect(ws.end).toHaveBeenCalledWith(4001)
+        expect(wsApiHandler).not.toHaveBeenCalled()
     })
 
     it('session ok → dispatched', async () => {
         const ws = createWs()
-        const session = { sessionInfo: { id: 's1' } }
-        wsSessionHandler.mockResolvedValue({ kind: 'ok', session })
+        wsSessionHandler.mockResolvedValue({ kind: 'ok' })
         wsApiHandler.mockResolvedValue({ status: 'success', event: 'api/user/me' })
 
         await handlers.onMessage(ws as never, message(APP_MESSAGE), false, ROUTES)
 
-        expect(wsApiHandler).toHaveBeenCalledWith(
-            expect.anything(),
-            ws,
-            expect.anything(),
-            session,
-            ROUTES,
-        )
+        // feat-274: the dispatcher gets no session, the user comes from the connection.
+        expect(wsApiHandler).toHaveBeenCalledWith(expect.anything(), ws, expect.anything(), ROUTES)
     })
 })
 

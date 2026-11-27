@@ -40,12 +40,28 @@ beforeEach(() => {
 })
 
 describe('wsSessionHandler', () => {
-    it('ok with the session of an authenticated user', async () => {
+    // feat-274: only the verdict, no Session object; the record and the token are still checked.
+    it('ok with the session of an authenticated user, after both checks', async () => {
         getSession.mockResolvedValue({ id: 's1', data: { userId: '1' }, createdAt: '' })
-        const result = await wsSessionHandler('s1', USER_TOKEN)
-        expect(result.kind).toBe('ok')
-        expect(result.kind === 'ok' && result.session.sessionInfo?.id).toBe('s1')
+        await expect(wsSessionHandler('s1', USER_TOKEN)).resolves.toEqual({ kind: 'ok' })
+        expect(getSession).toHaveBeenCalledWith('s1', USER_TOKEN)
+        expect(tokenChecker).toHaveBeenCalledWith('1', USER_TOKEN)
     })
+
+    it('missing for a userToken of an invalid format, without reading the session', async () => {
+        await expect(wsSessionHandler('s1', 'short')).resolves.toEqual({ kind: 'missing' })
+        expect(getSession).not.toHaveBeenCalled()
+        expect(tokenChecker).not.toHaveBeenCalled()
+    })
+
+    it.each([{}, { userId: '' }])(
+        'missing for a session without a userId (%o), without the token check',
+        async (data) => {
+            getSession.mockResolvedValue({ id: 's1', data, createdAt: '' })
+            await expect(wsSessionHandler('s1', USER_TOKEN)).resolves.toEqual({ kind: 'missing' })
+            expect(tokenChecker).not.toHaveBeenCalled()
+        },
+    )
 
     // ADR 0002: the record is there, but users.sessionToken was rotated.
     it('missing when the sessionToken was rotated, though the session record exists', async () => {

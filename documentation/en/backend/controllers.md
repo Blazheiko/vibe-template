@@ -61,21 +61,19 @@ export interface WsContext<TPayload = unknown> {
     wsData: WsData<TPayload>
     responseData: WsResponseData
     userData: UserConnection | null
-    session: null
-    auth: null
     logger: Logger
     signal: AbortSignal
 }
 ```
 
-| What you need    | HTTP                                                               | WS                                     |
-| ---------------- | ------------------------------------------------------------------ | -------------------------------------- |
-| Validated body   | `getTypedPayload(context)`                                         | `getTypedPayload(context)`             |
-| Path parameters  | `context.httpData.params.id` (strings, typed by the contract)      | —                                      |
-| Query            | `context.httpData.query` (typed if there is a `queryValidator`)    | —                                      |
-| Current user     | `context.auth.getUserId()` (`string \| null`)                      | `context.userData?.userId`             |
-| Session          | `context.session.sessionInfo`, `updateSessionData(...)`            | `session: null`                        |
-| Status / headers | `context.responseData.status = 201`, `responseData.setHeader(...)` | `context.responseData.status` (string) |
+| What you need    | HTTP                                                               | WS                                      |
+| ---------------- | ------------------------------------------------------------------ | --------------------------------------- |
+| Validated body   | `getTypedPayload(context)`                                         | `getTypedPayload(context)`              |
+| Path parameters  | `context.httpData.params.id` (strings, typed by the contract)      | —                                       |
+| Query            | `context.httpData.query` (typed if there is a `queryValidator`)    | —                                       |
+| Current user     | `context.auth.getUserId()` (`string \| null`)                      | `parseUserId(context.userData?.userId)` |
+| Session          | `context.session.sessionInfo`, `updateSessionData(...)`            | none (checked before the handler)       |
+| Status / headers | `context.responseData.status = 201`, `responseData.setHeader(...)` | `context.responseData.status` (string)  |
 
 [`getTypedPayload`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/get-typed-payload.ts) works with both contexts and returns the payload that has already passed the route validator (see [Validation](/en/backend/validation)). Path parameters are read directly, for example in [oauth-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/auth/oauth-controller.ts): `context.httpData.params["provider"] ?? ""`.
 
@@ -191,14 +189,14 @@ The "is the user logged in" check at the route level is usually done by the auth
 
 ## WsContext in detail
 
-The context is created for every WS message in [ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts) by the [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts) dispatcher. The session and authentication are already checked at connection time (upgrade), so `session` and `auth` are always `null` here: the user comes from `userData`. There are also `requestId`, `logger` (with `requestId` and `userId`) and `signal`, which fires when the connection closes.
+The context is created for every WS message in [ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts) by the [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts) dispatcher. `WsContext` has no `session` or `auth` fields: the user comes from `userData`, the connection's data (`ws.getUserData()`). The session is checked at connection time (upgrade) and on a message for a known route: in `onMessage` after the envelope format check and the route lookup, but before the route limit and payload validation; heartbeats and unknown events are handled earlier, without reading the session ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts)). The check answers only a verdict: no session — the connection is closed with code `4001`; Redis or the DB unavailable — a `service_unavailable` error; in both cases the handler is not called. Authorization (the role, the MFA state) reads `userData`. There are also `requestId`, `logger` (with `requestId` and `userId`) and `signal`, which fires when the connection closes.
 
 ### `ws: MyWebSocket`
 
 The uWebSockets.js socket of the current connection (`WebSocket<UserConnection>` + `id`). You need it when you have to act on the connection itself, not just reply:
 
 - `ws.subscribe(topic)` / `ws.unsubscribe(topic)` — subscribe to a pub/sub channel (this is what [admin-ws-channel-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/admin/admin-ws-channel-service.ts) does);
-- `ws.getUserData()` — the same object as `context.userData`.
+- `ws.getUserData()` — the connection's data (`UserConnection`); `context.userData` is a reference to the same object. On a closed socket `ws.getUserData()` throws `Invalid access of closed uWS.WebSocket` (feat-107), so in a handler, especially after an `await`, read `context.userData`, taken before the close; `context.signal` tells you the connection closed.
 
 Do **not** send the response to the current message through `ws.send`: just return a value from the method. Do broadcasts to other clients through the `communication/` services (broadcast).
 
@@ -235,30 +233,31 @@ The dispatcher will catch an unhandled exception from a controller and respond w
 
 ### `userData: UserConnection | null`
 
-Connection data collected during the upgrade ([types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts)):
+Connection data (the same as `ws.getUserData()`) collected during the upgrade ([types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts)):
 
-| Field                      | Description                                                                                                                                                               |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `userId`                   | `string \| undefined` — the user id; for services brand it with `asUserId(userId)`.                                                                                       |
-| `sessionId`, `userToken`   | The session the connection was opened with.                                                                                                                               |
-| `uuid`                     | Unique connection id (one user can have several tabs).                                                                                                                    |
-| `role`                     | A role of the `shared/access` catalog (`user`, `support_operator`, `kb_editor`, `user_admin`, `admin`); [role sync](/en/backend/websocket#role-sync) keeps it up to date. |
-| `appType`                  | `'web' \| 'pwa'`.                                                                                                                                                         |
-| `ip`, `ip2`, `userAgent`   | Client data.                                                                                                                                                              |
-| `isAdminChannelSubscribed` | Whether the connection is subscribed to the admin channel.                                                                                                                |
-| `adminChannelPaused`       | The admin channel is paused after a failed role read; `ws_can:` refuses until the next read succeeds.                                                                     |
-| `timeStart`                | Connection time (ms).                                                                                                                                                     |
+| Field                      | Description                                                                                                                                                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `userId`                   | `string \| undefined` — the user id; for services parse it with `parseUserId(userId)` (a `UserId` or `null`).                                                                                                                                                                         |
+| `sessionId`, `userToken`   | The session the connection was opened with. Do not log them or send them to the client.                                                                                                                                                                                               |
+| `auth`                     | `SessionAuthState \| undefined` — the MFA state of the session (feat-247); `ws_can:` reads it for the staff MFA rule, [ws-session-auth-sync.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth-sync.ts) keeps it up to date. |
+| `uuid`                     | Unique connection id (one user can have several tabs).                                                                                                                                                                                                                                |
+| `role`                     | A role of the `shared/access` catalog (`user`, `support_operator`, `kb_editor`, `user_admin`, `admin`); [role sync](/en/backend/websocket#role-sync) keeps it up to date.                                                                                                             |
+| `appType`                  | `'web' \| 'pwa'`.                                                                                                                                                                                                                                                                     |
+| `ip`, `ip2`, `userAgent`   | Client data.                                                                                                                                                                                                                                                                          |
+| `isAdminChannelSubscribed` | Whether the connection is subscribed to the admin channel.                                                                                                                                                                                                                            |
+| `adminChannelPaused`       | The admin channel is paused after a failed role read; `ws_can:` refuses until the next read succeeds.                                                                                                                                                                                 |
+| `timeStart`                | Connection time (ms).                                                                                                                                                                                                                                                                 |
 
-The type allows `null` and `userId: undefined`, so check before use:
+The type allows `null` and `userId: undefined`, so check before use (as in [support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts)):
 
 ```ts
 const userData = context.userData
-if (userData?.userId === undefined) {
-    context.responseData.status = '401'
+const userId = parseUserId(userData?.userId)
+if (userData === null || userId === null) {
     return appErrorToPayload(unauthorized())
 }
 const payload = getTypedPayload(context)
-void supportService.chat(asUserId(userData.userId), payload.message, userData.uuid, context.signal)
+void supportService.chat(userId, payload.message, userData.uuid, context.signal)
 ```
 
 ## Returning data and status

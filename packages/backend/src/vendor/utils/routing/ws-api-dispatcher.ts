@@ -1,7 +1,6 @@
 import { executeWsMiddlewares } from '#vendor/utils/middlewares/core/execute-httpMiddlewares.js'
 // import validators from '#vendor/start/validators.js';
 import type {
-    Session,
     WsData,
     WsMessage,
     WsResponseData,
@@ -28,7 +27,6 @@ export default async (
     message: WsMessage,
     ws: MyWebSocket,
     userData: UserConnection,
-    session: Session,
     wsRoutesByUrl: Readonly<WsRoutes>,
 ): Promise<WsResponseData> => {
     const responseData: WsResponseData = {
@@ -78,8 +76,7 @@ export default async (
                         : (payload ?? {}),
             }
 
-            // const context = { wsData, responseData , session : null , auth: null};
-            const context = createWsContext(wsData, responseData, userData, session)
+            const context = createWsContext(wsData, responseData, userData)
             requestId = context.requestId
             userId = userData.userId
             if (

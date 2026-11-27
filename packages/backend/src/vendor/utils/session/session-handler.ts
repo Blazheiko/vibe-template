@@ -1,15 +1,7 @@
 import { nowUnixMs, unixSecondsOf } from 'shared/brand'
-import type { HttpContext, Session, SessionData } from '#vendor/types/types.js'
+import type { HttpContext } from '#vendor/types/types.js'
 import sessionConfig from '#config/session.js'
-import {
-    getSession,
-    updateSessionData,
-    updateSessionAuth,
-    changeSessionData,
-    consumeSessionData,
-    destroySession,
-    sessionExists,
-} from '#vendor/utils/session/redis-session-storage.js'
+import { getSession } from '#vendor/utils/session/redis-session-storage.js'
 import logger from '#vendor/utils/logger.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { assertSessionTokenCurrent } from '#vendor/utils/session/session-token-check.js'
@@ -74,9 +66,13 @@ export const sessionHandler = async (
     if (context.auth.check()) await runSignInCompletionHook(context)
 }
 
-export type WsSessionResult =
-    { kind: 'ok'; session: Session } | { kind: 'missing' } | { kind: 'unavailable' }
+/**
+ * The check of a WS message's session (feat-274): only the verdict, no Session object. The
+ * message handlers read the user from the connection (userData), never from the session.
+ */
+export type WsSessionResult = { kind: 'ok' } | { kind: 'missing' } | { kind: 'unavailable' }
 
+const OK: WsSessionResult = { kind: 'ok' }
 const MISSING: WsSessionResult = { kind: 'missing' }
 
 export const wsSessionHandler = async (
@@ -114,22 +110,7 @@ export const wsSessionHandler = async (
             return MISSING
         }
 
-        const session: Session = {
-            sessionInfo,
-            updateSessionData: async (newData: SessionData) =>
-                await updateSessionData(sessionInfo.id, newData, userToken),
-            changeSessionData: async (newData: SessionData) =>
-                await changeSessionData(sessionInfo.id, newData, userToken),
-            isStored: async () => await sessionExists(sessionInfo.id, userToken),
-            consumeSessionData: async (expected, keys) =>
-                (await consumeSessionData(sessionInfo.id, userToken, expected, keys)).kind,
-            updateSessionAuth: async (apply, options) =>
-                await updateSessionAuth(sessionInfo.id, userToken, apply, options?.removeKeys),
-            destroySession: async (): Promise<void> => {
-                await destroySession(sessionInfo.id, userToken)
-            },
-        }
-        return { kind: 'ok', session }
+        return OK
     } catch (err) {
         // Not an expired session: the caller keeps the connection open.
         if (err instanceof RedisUnavailableError) return { kind: 'unavailable' }

@@ -1,10 +1,4 @@
-import type {
-    Session,
-    UserConnection,
-    WsContext,
-    WsData,
-    WsResponseData,
-} from '#vendor/types/types.js'
+import type { UserConnection, WsContext, WsData, WsResponseData } from '#vendor/types/types.js'
 
 import logger from '#vendor/utils/logger.js'
 import { connectionSignal } from '#vendor/utils/network/ws-connection-signal.js'
@@ -14,7 +8,6 @@ export default (
     wsData: WsData,
     responseData: WsResponseData,
     userData: UserConnection | null,
-    _session: Session | null,
 ): WsContext => {
     const requestId = randomUUID()
     const requestLogger = logger.child({
@@ -29,8 +22,6 @@ export default (
         wsData,
         responseData,
         userData,
-        session: null,
-        auth: null,
         signal: connectionSignal(wsData.ws),
     }
 }
