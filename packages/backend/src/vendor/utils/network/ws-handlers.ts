@@ -414,13 +414,7 @@ const handleAdmittedMessage = async (
             // feat-233 (Р4): an authenticated message (not a heartbeat) counts as activity.
             void touchSessionFromWs(userData)
             // The dispatcher always answers.
-            const result = await wsApiHandler(
-                message,
-                ws,
-                userData,
-                sessionResult.session,
-                wsRoutesByUrl,
-            )
+            const result = await wsApiHandler(message, ws, userData, wsRoutesByUrl)
             sendJson(ws, result, userData)
         }
     } catch (err: unknown) {

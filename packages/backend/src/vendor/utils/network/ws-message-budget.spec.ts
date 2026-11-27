@@ -79,7 +79,7 @@ const unknownEvent = (n: number): string =>
 beforeEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
-    wsSessionHandler.mockResolvedValue({ kind: 'ok', session: {} })
+    wsSessionHandler.mockResolvedValue({ kind: 'ok' })
     wsApiHandler.mockImplementation((message: { event: string; timestamp: number }) =>
         Promise.resolve({
             status: 'error',

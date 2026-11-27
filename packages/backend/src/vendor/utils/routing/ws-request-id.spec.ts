@@ -32,7 +32,6 @@ const dispatch = async (
         message as never,
         { getUserData: () => ({ token: '' }) } as never,
         { token: '', userId: '9' } as never,
-        {} as never,
         { [route.url]: { ...route, responseCheck: null } },
     )
 }

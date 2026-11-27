@@ -61,21 +61,19 @@ export interface WsContext<TPayload = unknown> {
     wsData: WsData<TPayload>
     responseData: WsResponseData
     userData: UserConnection | null
-    session: null
-    auth: null
     logger: Logger
     signal: AbortSignal
 }
 ```
 
-| Що потрібно         | HTTP                                                               | WS                                    |
-| ------------------- | ------------------------------------------------------------------ | ------------------------------------- |
-| Провалідоване тіло  | `getTypedPayload(context)`                                         | `getTypedPayload(context)`            |
-| Параметри шляху     | `context.httpData.params.id` (рядки, типи з контракту)             | —                                     |
-| Query               | `context.httpData.query` (типізований, якщо є `queryValidator`)    | —                                     |
-| Поточний користувач | `context.auth.getUserId()` (`string \| null`)                      | `context.userData?.userId`            |
-| Сесія               | `context.session.sessionInfo`, `updateSessionData(...)`            | `session: null`                       |
-| Статус / заголовки  | `context.responseData.status = 201`, `responseData.setHeader(...)` | `context.responseData.status` (рядок) |
+| Що потрібно         | HTTP                                                               | WS                                      |
+| ------------------- | ------------------------------------------------------------------ | --------------------------------------- |
+| Провалідоване тіло  | `getTypedPayload(context)`                                         | `getTypedPayload(context)`              |
+| Параметри шляху     | `context.httpData.params.id` (рядки, типи з контракту)             | —                                       |
+| Query               | `context.httpData.query` (типізований, якщо є `queryValidator`)    | —                                       |
+| Поточний користувач | `context.auth.getUserId()` (`string \| null`)                      | `parseUserId(context.userData?.userId)` |
+| Сесія               | `context.session.sessionInfo`, `updateSessionData(...)`            | немає (перевіряється до обробника)      |
+| Статус / заголовки  | `context.responseData.status = 201`, `responseData.setHeader(...)` | `context.responseData.status` (рядок)   |
 
 [`getTypedPayload`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/get-typed-payload.ts) працює з обома контекстами й повертає payload, який уже пройшов валідатор маршруту (див. [Валідація](/backend/validation)). Параметри шляху беруться напряму, наприклад у [oauth-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/auth/oauth-controller.ts): `context.httpData.params["provider"] ?? ""`.
 
@@ -191,14 +189,14 @@ await context.auth.login(result.value.userId, result.value.userToken)
 
 ## WsContext докладно
 
-Контекст створюється для кожного WS-повідомлення в [ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts) диспетчером [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts). Сесія й автентифікація вже перевірені при підключенні (upgrade), тому `session` і `auth` тут завжди `null` — користувач береться з `userData`. Є також `requestId`, `logger` (з `requestId` і `userId`) і `signal`, який спрацьовує при закритті з'єднання.
+Контекст ([ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts)) створює диспетчер [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts) для повідомлення відомого маршруту з сесією `ok`: після ліміту маршруту (`checkRateLimitWs`) і валідації payload (`validateRoutePayload`), перед middleware. Полів `session` і `auth` у `WsContext` немає: користувач береться з `userData`, тобто з даних з'єднання (`ws.getUserData()`). Сесію перевіряють при підключенні (upgrade) і на повідомлення відомого маршруту: в `onMessage` після перевірки формату конверта і пошуку маршруту, але до ліміту маршруту і валідації payload; heartbeat і невідомі події обробляються раніше, без читання сесії ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts)). Перевірка дає лише вердикт: немає сесії — з'єднання закривається з кодом `4001`, недоступні Redis чи БД — помилка `service_unavailable`, і обробник не викликається. Авторизація (роль, стан MFA) читає `userData`. Є також `requestId`, `logger` (з `requestId` і `userId`) і `signal`, який спрацьовує при закритті з'єднання.
 
 ### `ws: MyWebSocket`
 
 Сокет uWebSockets.js поточного з'єднання (`WebSocket<UserConnection>` + `id`). Потрібен, коли треба діяти з самим з'єднанням, а не просто відповісти:
 
 - `ws.subscribe(topic)` / `ws.unsubscribe(topic)` — підписка на pub/sub-канал (так робить [admin-ws-channel-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/admin/admin-ws-channel-service.ts));
-- `ws.getUserData()` — той самий об'єкт, що й `context.userData`.
+- `ws.getUserData()` — дані з'єднання (`UserConnection`); `context.userData` — посилання на той самий об'єкт. На закритому сокеті `ws.getUserData()` кидає `Invalid access of closed uWS.WebSocket` (feat-107), тому в обробнику, особливо після `await`, читайте `context.userData`, отриманий ще до закриття; про закриття з'єднання сигналізує `context.signal`.
 
 Відповідь на поточне повідомлення **не** відправляйте через `ws.send` — просто поверніть значення з методу. Розсилки іншим клієнтам робіть через сервіси `communication/` (broadcast).
 
@@ -235,30 +233,34 @@ subscribeOnlineUsers(context: WsContext): AdminOnlineUsersWsResponse {
 
 ### `userData: UserConnection | null`
 
-Дані з'єднання, зібрані під час upgrade ([types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts)):
+Дані з'єднання (те саме, що `ws.getUserData()`), зібрані під час upgrade ([types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts)):
 
-| Поле                       | Опис                                                                                                                                                                       |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `userId`                   | `string \| undefined` — id користувача; для сервісів брендуйте його через `asUserId(userId)`.                                                                              |
-| `sessionId`, `userToken`   | Сесія, з якою відкрито з'єднання.                                                                                                                                          |
-| `uuid`                     | Унікальний id з'єднання (один користувач може мати кілька вкладок).                                                                                                        |
-| `role`                     | Роль із каталогу `shared/access` (`user`, `support_operator`, `kb_editor`, `user_admin`, `admin`); її оновлює [синхронізація ролі](/backend/websocket#синхронізація-ролі). |
-| `appType`                  | `'web' \| 'pwa'`.                                                                                                                                                          |
-| `ip`, `ip2`, `userAgent`   | Дані клієнта.                                                                                                                                                              |
-| `isAdminChannelSubscribed` | Чи підписане з'єднання на адмін-канал.                                                                                                                                     |
-| `adminChannelPaused`       | Адмін-канал призупинено після невдалого читання ролі; `ws_can:` відмовляє, доки наступне читання не вдасться.                                                              |
-| `timeStart`                | Час підключення (ms).                                                                                                                                                      |
+| Поле                       | Опис                                                                                                                                                                                                                                                             |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `userId`                   | `string \| undefined` — id користувача; для сервісів розбирайте його через `parseUserId(userId)` (`UserId` або `null`).                                                                                                                                          |
+| `sessionId`, `userToken`   | Сесія, з якою відкрито з'єднання. Не логуйте їх і не віддавайте клієнту.                                                                                                                                                                                         |
+| `auth`                     | `SessionAuthState \| undefined` — стан MFA сесії (feat-247); його читає `ws_can:` для правила MFA персоналу, оновлює [ws-session-auth-sync.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth-sync.ts). |
+| `uuid`                     | Унікальний id з'єднання (один користувач може мати кілька вкладок).                                                                                                                                                                                              |
+| `role`                     | Роль із каталогу `shared/access` (`user`, `support_operator`, `kb_editor`, `user_admin`, `admin`); її оновлює [синхронізація ролі](/backend/websocket#синхронізація-ролі).                                                                                       |
+| `appType`                  | `'web' \| 'pwa'`.                                                                                                                                                                                                                                                |
+| `ip`, `ip2`, `userAgent`   | Дані клієнта.                                                                                                                                                                                                                                                    |
+| `isAdminChannelSubscribed` | Чи підписане з'єднання на адмін-канал.                                                                                                                                                                                                                           |
+| `adminChannelPaused`       | Адмін-канал призупинено після невдалого читання ролі; `ws_can:` відмовляє, доки наступне читання не вдасться.                                                                                                                                                    |
+| `timeStart`                | Час підключення (ms).                                                                                                                                                                                                                                            |
 
-Тип допускає `null` і `userId: undefined`, тому перевіряйте перед використанням:
+Тип допускає `null` і `userId: undefined`, тому перевіряйте перед використанням (як у [support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts)):
 
 ```ts
 const userData = context.userData
-if (userData?.userId === undefined) {
-    context.responseData.status = '401'
+const userId = parseUserId(userData?.userId)
+if (userData === null || userId === null) {
     return appErrorToPayload(unauthorized())
 }
 const payload = getTypedPayload(context)
-void supportService.chat(asUserId(userData.userId), payload.message, userData.uuid, context.signal)
+const admission = await supportService.admitChat(userId, payload.message)
+if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+void supportService.runChat(admission.value, userId, payload.message, userData.uuid, context.signal)
+return { status: 'ok' }
 ```
 
 ## Повернення даних і статус

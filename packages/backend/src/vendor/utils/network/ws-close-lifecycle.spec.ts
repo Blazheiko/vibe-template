@@ -83,7 +83,7 @@ const message = (text: string): ArrayBuffer => {
 beforeEach(() => {
     vi.clearAllMocks()
     order.length = 0
-    wsSessionHandler.mockResolvedValue({ kind: 'ok', session: {} })
+    wsSessionHandler.mockResolvedValue({ kind: 'ok' })
 })
 
 describe('onClose (feat-107)', () => {
@@ -168,7 +168,7 @@ describe('a reply after the socket closed (feat-124)', () => {
             releaseDisconnect()
             return Promise.resolve({ event: 'main:ping', status: 'success', data: {} })
         })
-        wsSessionHandler.mockResolvedValue({ kind: 'ok', session: {} })
+        wsSessionHandler.mockResolvedValue({ kind: 'ok' })
 
         await handlers.onMessage(
             ws as never,
@@ -204,6 +204,7 @@ describe('an expired session after the socket closed (feat-128)', () => {
         expect(ws.send).not.toHaveBeenCalled()
         expect(ws.end).not.toHaveBeenCalled()
         expect(logger.error).not.toHaveBeenCalled()
+        expect(wsApiHandler).not.toHaveBeenCalled()
     })
 })
 

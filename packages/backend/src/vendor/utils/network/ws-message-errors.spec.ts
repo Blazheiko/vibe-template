@@ -58,7 +58,7 @@ const send = async (text: string) => {
 beforeEach(() => {
     vi.clearAllMocks()
     validate.mockImplementation((value: unknown) => ({ ok: true, value }))
-    wsSessionHandler.mockResolvedValue({ kind: 'ok', session: {} })
+    wsSessionHandler.mockResolvedValue({ kind: 'ok' })
 })
 
 describe('onMessage error replies', () => {

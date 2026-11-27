@@ -33,7 +33,6 @@ const dispatch = async (event: string, payload: unknown, route?: RouteItem) => {
         { event, timestamp: 1, payload } as never,
         { getUserData: () => ({ token: '' }) } as never,
         { token: '' } as never,
-        {} as never,
         routes,
     )
 }
