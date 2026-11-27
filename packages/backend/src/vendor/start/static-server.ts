@@ -134,10 +134,17 @@ const memoryEntry = (data: string | Buffer, ext = ''): StaticEntry => ({
     ...compressedVariants(ext, data),
 })
 
+/**
+ * Cache key of a file under the static root: a URL path (`/assets/a.js`) on every OS, since the
+ * keys are looked up by request URL (feat-275: `substring` kept the Windows separator).
+ */
+const toCacheKey = (root: string, filePath: string, p: path.PlatformPath = path): string =>
+    '/' + p.relative(root, filePath).split(p.sep).join('/')
+
 const cacheFile = async (filePath: string): Promise<void> => {
     const ext = path.extname(filePath).substring(1).toLowerCase()
     if (!ALLOWED_STATIC_EXTENSIONS.has(ext)) return
-    const key = filePath.substring(STATIC_PATH.length)
+    const key = toCacheKey(STATIC_PATH, filePath)
     const stats = await fs.stat(filePath)
     // Re-caching a file (rebuild in place) frees the budget of its previous version.
     memoryUsed -= memoryCost(cache.get(key))
@@ -460,6 +467,7 @@ const staticHandler = async (res: HttpResponse, req: HttpRequest): Promise<void>
 /* eslint-enable @typescript-eslint/require-await */
 
 export {
+    toCacheKey,
     memoryEntry,
     cacheFile,
     cacheDirectory,
