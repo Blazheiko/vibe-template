@@ -2733,6 +2733,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #893 (merge 446434c), status #892 (in_progress), #894 (review). wsSessionHandler answers only the verdict (ok / missing / unavailable), its checks unchanged (token format, record with the sliding TTL and max age, userId, sessionToken current); the Session with mutating methods is no longer built per message; the dispatcher and createWsContext take no session; WsContext has no session / auth (handlers read userData = ws.getUserData()). Tests: exact ok result with the getSession / token-check calls, invalid token format, session without userId, no dispatch on missing, new ws-context.spec.ts (compile-time and runtime). Docs (both locales): auth, controllers, request-lifecycle, websocket - the order of the WS checks, the service_unavailable envelope, getUserData on a closed socket, the userData table (auth, parseUserId). CI on d642947: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46009340859/job/140540540345); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46009340972/job/140540540205); quality, e2e, e2e-live, Docs green (again on 819987b); local make check exit 0 (backend 3942 tests); docs:build + docs:verify passed; manual dev-playground check passed (owner). Left out: narrowing WsContext.userData to non-null."
+        },
+        {
+            "id": "feat-275",
+            "name": "Vendor Cleanup",
+            "description": "Small cleanups in packages/backend/src/vendor (analysis of 2026-11-27). (1) Dead code: start/validators.ts (empty ValidatorFunction map), the ValidatorFunction type, the commented-out lines in ws-api-dispatcher.ts, and isValidUrl in http-request-handlers.ts. (2) ResponseData.setHeader replaces the value of a header with the same name (case-insensitive) instead of pushing a duplicate; http-rate-limit.spec.ts moves to the real createResponseData and covers both 429 sources (global L1 and the route limit). (3) One module-level TextDecoder in parseMultipart, with a test of two Unicode text fields through the real getParts. (4) Static cache keys through toCacheKey (path.relative, '/' on every OS), tests for POSIX and win32. (5) Imports: node:crypto, #vendor/utils/logger.js and #vendor/* instead of ../ inside vendor; ESLint forbids bare Node built-ins in packages/backend/src and #logger / ../ inside vendor, keeping the ADR 0005/0006 restrictions. (6) Docs in both locales: setHeader in controllers.md and guide/http-response.md. Plan: docs/plan/vendor-cleanup-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "chore/vendor-cleanup",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
