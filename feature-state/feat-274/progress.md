@@ -1,7 +1,7 @@
 # feat-274 · WS Context Without Session
 
 Branch: `refactor/ws-context-session`. Plan: `docs/plan/ws-session-info-plan.md` (edition 5).
-Registry PR: #892 (merged, `in_progress`). Status: implementation done, PR open.
+Registry PR: #892 (merged, `in_progress`). Status: implementation done, PR #893 open, DoD complete.
 
 ## Changes
 
@@ -75,10 +75,10 @@ Registry PR: #892 (merged, `in_progress`). Status: implementation done, PR open.
     - `quality`, `e2e`, `e2e-live` green
       (https://github.com/Blazheiko/vibe-template/actions/runs/46009341052); Docs `build` green
       (https://github.com/Blazheiko/vibe-template/actions/runs/46009340926).
-- Manual golden path (`make dev-playground`): **not done yet**, needs this project's services.
-  Steps: sign in, `support` / `admin` WS events answer as before; HTTP logout in another tab closes
-  the socket with 4001 at once (ws-session-revocation); optionally `redis-cli DEL
-session:<userToken>:<sessionId>` with the socket open, then a known-route event → 4001 (the
+- Manual golden path (`make dev-playground`), run by the owner on 2026-11-27: passed, everything
+  works as expected. Steps: sign in, `support` / `admin` WS events answer as before; HTTP logout in
+  another tab closes the socket with 4001 at once (ws-session-revocation); optionally `redis-cli
+DEL session:<userToken>:<sessionId>` with the socket open, then a known-route event → 4001 (the
   `missing` branch).
 
 ## Review of #893 (COMMENT, c244ead7)
@@ -100,5 +100,5 @@ session:<userToken>:<sessionId>` with the socket open, then a known-route event 
 
 ## Notes for Next Session
 
-- Do the manual check (needs this project's PostgreSQL / Redis on 5432 / 6379); the owner runs it.
-- Then: status PR `feat-274` → `review`, review, merge, "Mark feat-274 done".
+- Definition of Done complete. Next: status PR `feat-274` → `review`, merge #893, then
+  "Mark feat-274 done" (evidence in `feature_list.json`, delete `feature-state/feat-274/`).
