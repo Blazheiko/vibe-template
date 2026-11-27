@@ -2751,7 +2751,7 @@
             "owner": "Blazheiko",
             "branch": "fix/vendor-cleanup-review",
             "dependencies": ["feat-275"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
