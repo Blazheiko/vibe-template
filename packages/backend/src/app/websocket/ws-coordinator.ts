@@ -1,6 +1,6 @@
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { parseUserId } from '#app/domain/ids.js'
-import { presentedSessionTokenOf } from '#app/domain/secrets.js'
+import { presentedSessionTokenOf, sessionIdOf } from '#app/domain/secrets.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
 import { touchSessionFromWs } from '#vendor/utils/session/ws-session-touch.js'
@@ -77,7 +77,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
             // A logout of one session deletes its stored record and rotates nothing.
             userToken === undefined
                 ? Promise.resolve(false)
-                : wsSessionRevocation.isSessionStored(sessionId, userToken),
+                : wsSessionRevocation.isSessionStored(sessionIdOf(sessionId), userToken),
         ])
         // feat-243 (review 2026-11-21): a role change signalled while the role was read is not
         // seen by wsRoleSync (this connection is not registered yet); it marked the connection,

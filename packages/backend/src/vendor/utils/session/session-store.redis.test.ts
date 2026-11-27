@@ -125,9 +125,9 @@ const { default: executeMiddlewares } =
 const { default: createContext } = await import('#vendor/utils/context/http-context.js')
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { registerSessionTokenChecker } = await import('./session-token-check.js')
-const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
+const { checkSessionTokenText } = await import('#app/services/auth/session-token-check.js')
 
-registerSessionTokenChecker(checkSessionToken)
+registerSessionTokenChecker(checkSessionTokenText)
 
 const admin = createTestRedis(PREFIX)
 const USER_TOKEN = 'sessionStoreToken001'

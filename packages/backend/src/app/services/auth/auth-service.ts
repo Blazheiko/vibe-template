@@ -1,7 +1,12 @@
 import { hashPassword, validatePassword } from 'metautil'
 import { toIsoDateTime, type IsoDateTime } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
-import { presentedSessionTokenOf, type SessionToken, newSessionToken } from '#app/domain/secrets.js'
+import {
+    presentedSessionTokenOf,
+    type SessionToken,
+    newSessionToken,
+    sessionIdOf,
+} from '#app/domain/secrets.js'
 import { Result } from 'better-result'
 import type { Auth, LoginOrigin, Session } from '#vendor/types/types.js'
 import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
@@ -1094,7 +1099,7 @@ export const authService = {
             throw err
         }
         if (userId !== null && sessionId !== undefined) {
-            wsSessionRevocation.closeUserConnections(userId, { sessionId })
+            wsSessionRevocation.closeUserConnections(userId, { sessionId: sessionIdOf(sessionId) })
         }
 
         if (!result) {
@@ -1357,7 +1362,9 @@ export const authService = {
         // whatever is left (its token is rotated), as it does for another instance.
         wsSessionRevocation.closeUserConnections(
             String(userId),
-            requestingSessionId === undefined ? {} : { exceptSessionId: requestingSessionId },
+            requestingSessionId === undefined
+                ? {}
+                : { exceptSessionId: sessionIdOf(requestingSessionId) },
         )
 
         // Memory cleanup, not the revocation: a failure leaves records that are already

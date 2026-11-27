@@ -102,7 +102,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     const { hashPassword, validatePassword } = await import('metautil')
     const { userRepository } = await import('#app/repositories/index.js')
     const { authService } = await import('#app/services/auth/auth-service.js')
-    const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
+    const { checkSessionTokenText } = await import('#app/services/auth/session-token-check.js')
     const { generateWsToken } = await import('#app/services/auth/generate-ws-token-service.js')
     const { wsSessionAuth } = await import('#app/websocket/ws-session-auth.js')
     const { sessionHandler, wsSessionHandler } =
@@ -116,7 +116,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     const { default: createContext } = await import('#vendor/utils/context/http-context.js')
     const { default: sessionConfig } = await import('#config/session.js')
 
-    registerSessionTokenChecker(checkSessionToken)
+    registerSessionTokenChecker(checkSessionTokenText)
 
     const admin = createTestRedis(PREFIX)
     const now = Date.now()

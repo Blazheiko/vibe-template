@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid'
 import { type Milliseconds, ms } from 'shared/brand'
 
 import redis, { withRedis } from '#database/redis.js'
-import { msArg, setIfAbsentWithTtlMs } from '#app/services/shared/redis-ttl.js'
+import { msArg, setIfAbsentWithTtlMs } from '#vendor/utils/redis/redis-ttl.js'
 import databasePoolConfig, { statementBoundMs } from '#config/database-pool.js'
 
 // A Redis lock that is a lease with an owner (first used by the support in-flight lock, feat-115

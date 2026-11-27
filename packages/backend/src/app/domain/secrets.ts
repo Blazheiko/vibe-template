@@ -37,6 +37,11 @@ export type MfaBinding = Brand<string, 'MfaBinding'>
  * revokes every session.
  */
 export type SessionToken = Brand<string, 'SessionToken'>
+/**
+ * The id of one stored session (feat-272, T30): its Redis key part and the sid of its cookie. Not
+ * a secret, but text the session layer wrote, kept apart from the token it is stored under.
+ */
+export type SessionId = Brand<string, 'SessionId'>
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 const hmac = (key: string, text: string): string =>
@@ -137,6 +142,9 @@ export const newSessionToken = (): SessionToken => nanoid<SessionToken>()
 
 /** A session token read from a session record or a WS token (text the app wrote). */
 export const sessionTokenOf = (text: string): SessionToken => text as SessionToken
+
+/** The id of a session the session layer handed over (`sessionInfo.id`, a WS connection). */
+export const sessionIdOf = (text: string): SessionId => text as SessionId
 
 /** The session token a request presented (`auth.getPresentedUserToken()`), if any. */
 export const presentedSessionTokenOf = (text: string | undefined): SessionToken | undefined =>

@@ -1,5 +1,5 @@
 import { duration } from 'metautil'
-import { ms, toSecondsFloor, type Seconds } from 'shared/brand'
+import { ms, toSecondsCeil, type Seconds } from 'shared/brand'
 import { env } from 'node:process'
 
 import appConfig from '#config/app.js'
@@ -20,15 +20,15 @@ const cookieName = useHostPrefix ? HOST_PREFIXED_COOKIE_NAME : PLAIN_COOKIE_NAME
 const ANON_AGE_DEFAULT = '2h'
 const readAnonAge = (): Seconds => {
     const raw = env['SESSION_ANON_TTL']
-    const anonSeconds = toSecondsFloor(
-        ms(duration(raw === undefined || raw === '' ? ANON_AGE_DEFAULT : raw)),
-    )
-    if (!Number.isFinite(anonSeconds) || anonSeconds <= 0) {
+    const anonMs = ms(duration(raw === undefined || raw === '' ? ANON_AGE_DEFAULT : raw))
+    // feat-272 (Р7): a duration is rounded up into seconds; under one second it is refused, as
+    // it was when it rounded down to 0.
+    if (!Number.isFinite(anonMs) || anonMs < 1000) {
         throw new Error(
             `SESSION_ANON_TTL must be a positive duration (e.g. 2h, 30m), got "${String(raw)}"`,
         )
     }
-    return anonSeconds
+    return toSecondsCeil(anonMs)
 }
 
 // ADR 0002: every authenticated request waits for one users.session_token read. A
@@ -55,7 +55,7 @@ export default Object.freeze({
     cookieName,
     useHostPrefix,
     /** Lifetime of a stored session, sliding with every request (24 h). */
-    ageSeconds: toSecondsFloor(ms(duration('24h'))),
+    ageSeconds: toSecondsCeil(ms(duration('24h'))),
     /** Lifetime of an anonymous session (SESSION_ANON_TTL, default 2h). */
     anonAgeSeconds: readAnonAge(),
     /** Deadline of the users.session_token lookup, in ms (SESSION_TOKEN_CHECK_TIMEOUT_MS, default 2000). */

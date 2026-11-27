@@ -6,6 +6,13 @@ import logger from '#vendor/utils/logger.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import redisConfig from '#config/redis.js'
 import { storedSessionTtl } from '#vendor/utils/session/session-ttl.js'
+import type { Seconds } from 'shared/brand'
+import {
+    getAndRenewTtlSeconds,
+    secondsArg,
+    setIfAbsentWithTtlSeconds,
+    setWithTtlSeconds,
+} from '#vendor/utils/redis/redis-ttl.js'
 import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 import { ANON_SESSION_NAMESPACE } from '#vendor/utils/session/session-ttl.js'
 import {
@@ -54,10 +61,10 @@ export const sanitizeRedisKey = (key: string | undefined | null): string => {
  */
 export const claimCookieRefresh = async (
     sessionId: string,
-    ttlSeconds: number,
+    ttlSeconds: Seconds,
 ): Promise<boolean> => {
     const key = sanitizeRedisKey(`session_cookie_refresh:${sessionId}`)
-    return (await withRedis(() => redis.set(key, '1', 'EX', ttlSeconds, 'NX'))) === 'OK'
+    return (await withRedis(() => setIfAbsentWithTtlSeconds(redis, key, '1', ttlSeconds))) === 'OK'
 }
 
 /**
@@ -70,9 +77,9 @@ export const releaseCookieRefresh = async (sessionId: string): Promise<void> => 
 }
 
 /** Marks the cookie of a new session as just issued. */
-export const markCookieIssued = async (sessionId: string, ttlSeconds: number): Promise<void> => {
+export const markCookieIssued = async (sessionId: string, ttlSeconds: Seconds): Promise<void> => {
     const key = sanitizeRedisKey(`session_cookie_refresh:${sessionId}`)
-    await withRedis(() => redis.set(key, '1', 'EX', ttlSeconds))
+    await withRedis(() => setWithTtlSeconds(redis, key, '1', ttlSeconds))
 }
 
 // A cookie-held anonymous session has no record a late response could check, so login
@@ -80,10 +87,10 @@ export const markCookieIssued = async (sessionId: string, ttlSeconds: number): P
 // session must not re-issue that cookie over the login's one.
 export const markAnonSessionSuperseded = async (
     sessionId: string,
-    ttlSeconds: number,
+    ttlSeconds: Seconds,
 ): Promise<void> => {
     const key = sanitizeRedisKey(`session_superseded:${sessionId}`)
-    await withRedis(() => redis.set(key, '1', 'EX', ttlSeconds))
+    await withRedis(() => setWithTtlSeconds(redis, key, '1', ttlSeconds))
 }
 
 /** Whether a login has replaced this anonymous session (its marker is set). */
@@ -154,7 +161,7 @@ export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
     const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionInfo.id}`)
 
     const json = serializeSession(sessionInfo)
-    await withRedis(() => redis.setex(redisKey, storedSessionTtl(userToken), json))
+    await withRedis(() => setWithTtlSeconds(redis, redisKey, json, storedSessionTtl(userToken)))
 }
 
 export const getSession = async (
@@ -166,7 +173,7 @@ export const getSession = async (
     const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionId}`)
 
     const sessionJson = await withRedis(() =>
-        redis.getex(redisKey, 'EX', storedSessionTtl(userToken)),
+        getAndRenewTtlSeconds(redis, redisKey, storedSessionTtl(userToken)),
     )
 
     if (sessionJson === null) return null
@@ -254,7 +261,7 @@ const writeSessionUpdate = async (
                     redisKey,
                     currentJson,
                     updatedJson,
-                    String(storedSessionTtl(userToken)),
+                    secondsArg(storedSessionTtl(userToken)),
                 ),
             ),
         )
@@ -319,7 +326,7 @@ export const consumeSessionData = async (
                     redisKey,
                     currentJson,
                     updatedJson,
-                    String(storedSessionTtl(userToken)),
+                    secondsArg(storedSessionTtl(userToken)),
                 ),
             ),
         )

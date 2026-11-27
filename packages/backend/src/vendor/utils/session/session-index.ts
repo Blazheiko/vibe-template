@@ -5,6 +5,7 @@ import logger from '#vendor/utils/logger.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 import { storedSessionTtl } from '#vendor/utils/session/session-ttl.js'
+import { secondsArg } from '#vendor/utils/redis/redis-ttl.js'
 import { isAfter, type IndexPosition } from '#vendor/utils/session/session-page-cursor.js'
 
 // feat-233 (Р2): the sessions of a user, for the session list. Two keys per users.session_token,
@@ -158,7 +159,7 @@ export const createIndexedSession = async (
             sanitize(indexKey(userToken)),
             sanitize(metaKey(userToken)),
             serialize(session),
-            String(storedSessionTtl(userToken)),
+            secondsArg(storedSessionTtl(userToken)),
             publicId,
             String(createdAtMs),
             JSON.stringify({ sid: session.id, seen: createdAtMs }),
@@ -511,7 +512,7 @@ export const activatePendingSession = async (input: {
             sanitize(metaKey(userToken)),
             input.completionId,
             serialize(session),
-            String(storedSessionTtl(userToken)),
+            secondsArg(storedSessionTtl(userToken)),
             publicId,
             String(createdAtMs),
             JSON.stringify({ sid: session.id, seen: createdAtMs }),

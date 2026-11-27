@@ -1,11 +1,11 @@
-import { nowUnixMs, type UnixMs } from 'shared/brand'
+import { diffMs, nowUnixMs, type UnixMs } from 'shared/brand'
 import { Result } from 'better-result'
 import type { SessionAuthState } from 'shared/mfa'
 import { MFA_REASONS } from 'shared/mfa'
 import { roleHasPermission } from 'shared/access'
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { forbidden, type AppResult } from '#app/services/shared/errors.js'
-import { staffSessionDeadline } from '#app/services/auth/mfa/staff-policy.js'
+import { NO_STAFF_DEADLINE, staffSessionDeadline } from '#app/services/auth/mfa/staff-policy.js'
 import { broadcastService } from '#app/services/communication/broadcast-service.js'
 import logger from '#vendor/utils/logger.js'
 import { isClosedSocketError } from '#vendor/utils/network/ws-session-expired.js'
@@ -33,10 +33,10 @@ const clearTimer = (ws: MyWebSocket): void => {
     timers.delete(ws)
 }
 
-const scheduleTimer = (ws: MyWebSocket, deadline: number, now: UnixMs): void => {
+const scheduleTimer = (ws: MyWebSocket, deadline: UnixMs, nowMs: UnixMs): void => {
     clearTimer(ws)
-    if (!Number.isFinite(deadline)) return
-    const delay = Math.min(Math.max(0, deadline - now), MAX_TIMER_DELAY_MS)
+    if (deadline === NO_STAFF_DEADLINE) return
+    const delay = Math.min(Math.max(0, diffMs(deadline, nowMs)), MAX_TIMER_DELAY_MS)
     const timer = setTimeout(() => {
         timers.delete(ws)
         onDeadline(ws, deadline)
@@ -71,7 +71,7 @@ const expire = (ws: MyWebSocket, userData: UserConnection): void => {
     })
 }
 
-function onDeadline(ws: MyWebSocket, deadline: number): void {
+function onDeadline(ws: MyWebSocket, deadline: UnixMs): void {
     try {
         const userData = getUserData(ws)
         if (userData.closed === true) return

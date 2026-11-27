@@ -8,7 +8,7 @@ import {
 } from 'shared/brand'
 
 import redis, { withRedis } from '#database/redis.js'
-import { msArg, setWithTtlSeconds } from '#app/services/shared/redis-ttl.js'
+import { msArg, setWithTtlSeconds } from '#vendor/utils/redis/redis-ttl.js'
 import appConfig from '#config/app.js'
 import {
     mfaAttemptIdOf,

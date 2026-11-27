@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SessionToken } from '#app/domain/secrets.js'
+import { sessionIdOf, type SessionToken } from '#app/domain/secrets.js'
 
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 
@@ -388,7 +388,9 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
         // The session was still stored when it was read; the logout lands now, finds nothing
         // in the registry to close, and the token stays the same.
-        expect(wsSessionRevocation.closeUserConnections('9111', { sessionId: 's1' })).toBe(0)
+        expect(
+            wsSessionRevocation.closeUserConnections('9111', { sessionId: sessionIdOf('s1') }),
+        ).toBe(0)
         resolveAccess({ role: 'user', sessionToken: 'u1' })
         await connected
 
@@ -401,7 +403,9 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         const conn = connection('9112')
 
         const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
-        wsSessionRevocation.closeUserConnections('9112', { sessionId: 'another-session' })
+        wsSessionRevocation.closeUserConnections('9112', {
+            sessionId: sessionIdOf('another-session'),
+        })
         resolveAccess({ role: 'user', sessionToken: 'u1' })
         await connected
 

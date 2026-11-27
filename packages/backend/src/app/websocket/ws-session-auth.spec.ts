@@ -94,7 +94,7 @@ describe('verifyUpgradeToken', () => {
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
             kind: 'missing',
         })
-        expect(checkSessionToken).toHaveBeenCalledWith('1', 'u1')
+        expect(checkSessionToken).toHaveBeenCalledWith(1n, 'u1')
     })
 
     it('unavailable when the sessionToken lookup fails: no access on the Redis record alone', async () => {

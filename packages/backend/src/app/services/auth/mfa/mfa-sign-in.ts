@@ -17,6 +17,7 @@ import {
     mfaTicketIdOf,
     mfaCompletionIdOf,
     sessionTokenOf,
+    sessionIdOf,
 } from '#app/domain/secrets.js'
 import { MFA_REASONS, type SessionAuthState } from 'shared/mfa'
 import type { AuthenticationResponse } from 'shared/schemas'
@@ -911,7 +912,7 @@ async function endOtherSessions(
     currentSessionId: string,
 ): Promise<void> {
     wsSessionRevocation.closeUserConnections(plan.userId, {
-        exceptSessionId: plan.sessionId,
+        exceptSessionId: sessionIdOf(plan.sessionId),
         userToken: sessionTokenOf(ticket.userTokenAtStart),
     })
     const cleanup = await destroyAllSessions(ticket.userTokenAtStart, {

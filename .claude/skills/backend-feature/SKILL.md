@@ -126,8 +126,9 @@ export const notes = pgTable(
 
 - Branded ids (ADR 0007): declare `export type NoteId = Brand<bigint, 'NoteId'>` in
   `src/database/ids.ts`, add it to the relative `import type` at the top of `schema.ts`, and every
-  user id column takes `.$type<UserId>()`. In `src/app/domain/ids.ts` re-export the type and add
-  `parseNoteId` next to `parseUserId` (no `#` imports there: drizzle-kit loads the schema without
+  user id column takes `.$type<UserId>()`. In `src/app/domain/ids.ts` re-export the type, add it to
+  the `RowId` union (`toEntityId` takes only a `RowId`, feat-272) and add `parseNoteId` next to
+  `parseUserId` (no `#` imports there: drizzle-kit loads the schema without
   aliases). `$type` changes no SQL; `db:generate` must report no schema change for it.
 - `timestamp` without time zone; connections run with `TimeZone=UTC` (`database/pool-options.ts`).
 - Relations, if needed, go into `src/database/relations.ts` (Relational Queries v2, `defineRelations`).

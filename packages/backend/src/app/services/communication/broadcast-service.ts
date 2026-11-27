@@ -1,3 +1,4 @@
+import { nowUnixMs } from 'shared/brand'
 import logger from '#logger'
 import responseValidationConfig from '#config/response-validation.js'
 import { broadcastToChannel } from '#vendor/start/server.js'
@@ -161,7 +162,7 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             // admin subscribers whose staff deadline has passed leave the topic first, with
             // nothing awaited before the publish: an event published at t never reaches a socket
             // whose deadline is ≤ t, whenever its timer runs.
-            adminChannelSubscribers.dropExpired(Date.now())
+            adminChannelSubscribers.dropExpired(nowUnixMs())
             return broadcastToChannel(channel, event, message)
         },
     }

@@ -1,3 +1,4 @@
+import type { UnixMs } from 'shared/brand'
 import type { WsChannel } from 'shared/guards'
 
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
@@ -15,10 +16,10 @@ export const ADMIN_CHANNEL: WsChannel = 'admin'
 
 interface Entry {
     ws: MyWebSocket
-    deadline: number
+    deadline: UnixMs
 }
 
-/** Ascending by deadline; Infinity (the rule is off) at the end. */
+/** Ascending by deadline; NO_STAFF_DEADLINE (the rule is off) at the end. */
 const ordered: Entry[] = []
 const bySocket = new Map<MyWebSocket, Entry>()
 
@@ -32,7 +33,7 @@ const userDataOf = (ws: MyWebSocket): UserConnection | null => {
 }
 
 /** The index where an entry with `deadline` goes: after every entry with a deadline ≤ it. */
-const insertionIndex = (deadline: number): number => {
+const insertionIndex = (deadline: UnixMs): number => {
     let low = 0
     let high = ordered.length
     while (low < high) {
@@ -66,7 +67,7 @@ const detach = (entry: Entry): void => {
 
 export const adminChannelSubscribers = {
     /** Adds the socket with its deadline, or moves it when it is there already. */
-    set(ws: MyWebSocket, deadline: number): void {
+    set(ws: MyWebSocket, deadline: UnixMs): void {
         const existing = bySocket.get(ws)
         if (existing !== undefined) detach(existing)
         const entry: Entry = { ws, deadline }
@@ -86,7 +87,7 @@ export const adminChannelSubscribers = {
         return bySocket.has(ws)
     },
 
-    deadlineOf(ws: MyWebSocket): number | undefined {
+    deadlineOf(ws: MyWebSocket): UnixMs | undefined {
         return bySocket.get(ws)?.deadline
     },
 
@@ -95,13 +96,13 @@ export const adminChannelSubscribers = {
     },
 
     /**
-     * Synchronously takes every subscriber whose deadline is ≤ `now` out of the admin topic and
+     * Synchronously takes every subscriber whose deadline is ≤ `nowMs` out of the admin topic and
      * marks it stale; returns how many left. Its timer still tells the client (`access_changed`).
      */
-    dropExpired(now: number): number {
+    dropExpired(nowMs: UnixMs): number {
         let dropped = 0
         let entry = ordered[0]
-        while (entry !== undefined && entry.deadline <= now) {
+        while (entry !== undefined && entry.deadline <= nowMs) {
             ordered.shift()
             bySocket.delete(entry.ws)
             dropped += 1

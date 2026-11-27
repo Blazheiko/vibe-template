@@ -17,11 +17,17 @@ import {
 } from 'shared/brand'
 
 import {
+    getAndRenewTtlSeconds,
     msArg,
     secondsArg,
     setIfAbsentWithTtlMs,
+    setIfAbsentWithTtlSeconds,
     setWithTtlSeconds,
-} from '#app/services/shared/redis-ttl.js'
+} from '#vendor/utils/redis/redis-ttl.js'
+import type { storedSessionTtl as StoredSessionTtl } from '#vendor/utils/session/session-ttl.js'
+import type { adminChannelSubscribers as Subscribers } from '#app/services/admin/admin-channel-subscribers.js'
+import type { staffSessionDeadline as StaffSessionDeadline } from '#app/services/auth/mfa/staff-policy.js'
+import type { MyWebSocket } from '#vendor/types/types.js'
 
 // feat-270 (plan Р7): the compiler keeps the units of time apart where they reach Redis, and an
 // instant in seconds apart from a duration in seconds. The calls behind `() =>` never run.
@@ -57,6 +63,59 @@ describe('Redis TTL helpers take the unit of their command', () => {
         ]
         expect(typeof typeCases).toBe('function')
         expect([secondsArg(seconds(2)), msArg(ms(1_500))]).toEqual(['2', '1500'])
+    })
+})
+
+// feat-272: the session layer keeps its TTL in Seconds up to the Redis call.
+describe('the session TTL reaches Redis as Seconds', () => {
+    it('storedSessionTtl is Seconds, and only an EX helper takes it', () => {
+        const client = {} as SetClient & Parameters<typeof getAndRenewTtlSeconds>[0]
+        const ttl = (() => seconds(60)) as typeof StoredSessionTtl
+        const typeCases = (): unknown[] => [
+            setWithTtlSeconds(client, 'k', 'v', ttl('anon_session')),
+            setIfAbsentWithTtlSeconds(client, 'k', 'v', ttl('token')),
+            getAndRenewTtlSeconds(client, 'k', ttl('token')),
+            secondsArg(ttl('token')),
+            // @ts-expect-error a session TTL in seconds does not reach a PX expiry
+            setIfAbsentWithTtlMs(client, 'k', 'v', ttl('token')),
+            // @ts-expect-error nor a Lua ARGV in milliseconds
+            msArg(ttl('token')),
+            // @ts-expect-error milliseconds do not renew an EX expiry
+            getAndRenewTtlSeconds(client, 'k', ms(60_000)),
+            // @ts-expect-error milliseconds do not reach SET … EX … NX
+            setIfAbsentWithTtlSeconds(client, 'k', 'v', ms(60_000)),
+        ]
+        expect(typeof typeCases).toBe('function')
+    })
+})
+
+// feat-272: the staff deadline of the admin WS channel is an instant from the policy to the
+// pre-publish check.
+describe('the admin channel deadline is UnixMs', () => {
+    it('only an instant in ms reaches the registry and its check', () => {
+        const subscribers = {} as typeof Subscribers
+        const deadlineOf = (() => null) as typeof StaffSessionDeadline
+        const ws = {} as MyWebSocket
+        const deadline = deadlineOf(undefined)
+        const typeCases = (): unknown[] => [
+            () => {
+                if (deadline !== null) subscribers.set(ws, deadline)
+            },
+            subscribers.dropExpired(nowUnixMs()),
+            () => {
+                // @ts-expect-error a duration is not a deadline
+                subscribers.set(ws, ms(60_000))
+            },
+            () => {
+                // @ts-expect-error an instant in seconds is not one in milliseconds
+                subscribers.set(ws, unixSecondsOf(nowUnixMs()))
+            },
+            // @ts-expect-error a bare number names no unit
+            subscribers.dropExpired(Date.now()),
+            // @ts-expect-error a duration is not the current instant
+            subscribers.dropExpired(seconds(1)),
+        ]
+        expect(typeof typeCases).toBe('function')
     })
 })
 
