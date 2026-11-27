@@ -6,7 +6,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import diskConfig from '#config/disk.js'
-import logger from '#logger'
+import logger from '#vendor/utils/logger.js'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 
 const rawEndpoint = diskConfig.s3Endpoint?.trim() ?? ''

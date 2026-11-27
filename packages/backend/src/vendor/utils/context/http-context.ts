@@ -1,7 +1,7 @@
 import type { Auth, HttpContext, HttpData, ResponseData, Session } from '#vendor/types/types.js'
 
 import logger from '#vendor/utils/logger.js'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 
 const getDefaultSession = (): Session => {
     return {

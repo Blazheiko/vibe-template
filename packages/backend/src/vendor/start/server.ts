@@ -23,7 +23,7 @@ import {
     resolveMaxBodySize,
     type BodyKind,
     type RequestAbortSignal,
-} from '../utils/network/http-request-handlers.js'
+} from '#vendor/utils/network/http-request-handlers.js'
 import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
 import { PayloadTooLargeError } from '#vendor/utils/network/errors/payload-too-large-error.js'
 import { SignInRequiredBeforeBodyError } from '#vendor/utils/network/errors/sign-in-required-before-body-error.js'
@@ -60,7 +60,7 @@ import type {
     routeList,
     WsRoutes,
 } from '#vendor/types/types.js'
-import contextHandler from '../utils/context/http-context.js'
+import contextHandler from '#vendor/utils/context/http-context.js'
 import {
     cacheStaticSource,
     staticHandler,

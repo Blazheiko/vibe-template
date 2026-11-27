@@ -8,8 +8,8 @@ import type {
     Payload,
     WsRoutes,
 } from '#vendor/types/types.js'
-import createWsContext from '../context/ws-context.js'
-import checkRateLimitWs, { createWsRateLimitErrorResponse } from '../rate-limit/ws-rate-limit.js'
+import createWsContext from '#vendor/utils/context/ws-context.js'
+import checkRateLimitWs, { createWsRateLimitErrorResponse } from '#vendor/utils/rate-limit/ws-rate-limit.js'
 import {
     classifiedErrorBody,
     classifyError,

@@ -2,7 +2,33 @@ import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import globals from 'globals'
 
+import { builtinModules } from 'node:module'
+
 import noBrandCast from './scripts/eslint-rules/no-brand-cast.mjs'
+
+// docs/adr/0005-route-contracts.md, 0006: a route of the application is declared through its
+// contract (`defineRoute` of app/routes/contract-schemas). The schema-only helper is for the
+// tests of the HTTP machinery (feat-170).
+const ROUTE_CONTRACT_IMPORT_PATHS = [
+    {
+        name: '#app/routing/define-raw-route.js',
+        message:
+            'Declare the route through its contract: defineRoute from #app/routes/contract-schemas/index.js (ADR 0005).',
+    },
+    {
+        name: '#app/routing/define-ws-route.js',
+        message:
+            'Declare the WS route through its contract: defineWsRoute from #app/routes/contract-schemas/index.js (ADR 0006).',
+    },
+]
+
+// feat-275: Node built-ins only with the node: prefix ('node:crypto', not 'crypto').
+const NODE_BUILTIN_IMPORT_PATHS = builtinModules
+    .filter((name) => !name.startsWith('node:') && !name.startsWith('_'))
+    .map((name) => ({
+        name,
+        message: `Import Node built-ins with the node: prefix: 'node:${name}'.`,
+    }))
 
 // packages/frontend, packages/api-playground and packages/landing have their own eslint.config.ts: ESLint 10
 // lints each file with the nearest config, so blocks for those packages do not belong here.
@@ -156,10 +182,11 @@ export default tseslint.config(
             },
         },
     },
+    // no-restricted-imports: a later block that sets the rule for the same file replaces its
+    // options, it does not add to them. So every block below repeats the lists that apply to its
+    // files (feat-275), and a new restriction goes into each block that covers the file.
     {
-        // docs/adr/0005-route-contracts.md: a route of the application is declared through its
-        // contract (`defineRoute` of app/routes/contract-schemas). The schema-only helper is for
-        // the tests of the HTTP machinery (feat-170).
+        // ADR 0005/0006 and node: built-ins (feat-275) for the backend, tests left out.
         files: ['packages/backend/src/**/*.ts'],
         ignores: [
             '**/*.spec.ts',
@@ -170,17 +197,43 @@ export default tseslint.config(
         rules: {
             'no-restricted-imports': [
                 'error',
+                { paths: [...ROUTE_CONTRACT_IMPORT_PATHS, ...NODE_BUILTIN_IMPORT_PATHS] },
+            ],
+        },
+    },
+    {
+        // The two route helpers themselves: node: built-ins only.
+        files: [
+            'packages/backend/src/app/routing/define-raw-route.ts',
+            'packages/backend/src/app/routing/define-ws-route.ts',
+        ],
+        rules: {
+            'no-restricted-imports': ['error', { paths: NODE_BUILTIN_IMPORT_PATHS }],
+        },
+    },
+    {
+        // feat-275: inside vendor, imports go through #vendor/* (no ../) and the logger through
+        // #vendor/utils/logger.js (#logger stays the alias of the rest of the backend). Repeats
+        // the lists of the backend block above, see the note on no-restricted-imports.
+        files: ['packages/backend/src/vendor/**/*.ts'],
+        ignores: ['**/*.spec.ts', '**/*.test.ts'],
+        rules: {
+            'no-restricted-imports': [
+                'error',
                 {
                     paths: [
+                        ...ROUTE_CONTRACT_IMPORT_PATHS,
+                        ...NODE_BUILTIN_IMPORT_PATHS,
                         {
-                            name: '#app/routing/define-raw-route.js',
+                            name: '#logger',
                             message:
-                                'Declare the route through its contract: defineRoute from #app/routes/contract-schemas/index.js (ADR 0005).',
+                                'Inside vendor import the logger from #vendor/utils/logger.js.',
                         },
+                    ],
+                    patterns: [
                         {
-                            name: '#app/routing/define-ws-route.js',
-                            message:
-                                'Declare the WS route through its contract: defineWsRoute from #app/routes/contract-schemas/index.js (ADR 0006).',
+                            regex: '^\\.\\./',
+                            message: 'Inside vendor import through #vendor/* instead of ../.',
                         },
                     ],
                 },
