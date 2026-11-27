@@ -2721,8 +2721,8 @@
             "owner": "Blazheiko",
             "branch": "fix/branded-types-final-gaps",
             "dependencies": ["feat-272"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #889 (merge cadb9e5), status #888 (registry), #890 (review). otpCodeMatches rejects a stored hash that is not exactly 64 lowercase hex characters (suffix regression of feat-272, tests for junk, odd digit, newline, uppercase); StaffDeadline = UnixMs | NO_STAFF_DEADLINE ('none') in the admin WS channel, staffAccessDeadline?: UnixMs absent while the rule is off; closeUserConnections(owner: UserId, …) and SessionId across ws-connection-registry; newSmsChallengeId() as the default of sms_auth_challenges.id (db:generate: no changes); toMs(challengeTtlSeconds) in webauthn-ceremony, UnixMs / Seconds in shared/mfa session-auth and proof-policy, the request-session cookie maxAge as Seconds. CI on b2b6311 (merge of main): test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45977968281/job/140434389133); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45977968285/job/140434388897); quality, e2e, Docs green; local make check exit 0 (backend 3933 tests); docs:build + docs:verify passed."
         }
     ]
 }
