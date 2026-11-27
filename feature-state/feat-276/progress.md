@@ -28,7 +28,11 @@ scope in the `feature_list.json` entry.
 (lines 13–14: `src/app/services/shared/apply-service-status.ts`; 229–230:
 `src/vendor/utils/rate-limit/rate-limit-store.ts`.)
 
-- No DB, Redis, route or docs change; `test-pg` / `test-redis` links from the PR CI below.
+- No DB, Redis, route or docs change. CI on the first push of #901: test-pg 72 files / 724
+  passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46032442871/job/140619359953);
+  test-redis 22 files / 231 passed, 0 skipped
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46032442872/job/140619360094);
+  quality, e2e, e2e-live green.
 - Manual golden path: not applicable beyond the tests (test code, a lint rule and a demo route
   header); the demo route header is covered by `main-service.spec.ts`.
 
