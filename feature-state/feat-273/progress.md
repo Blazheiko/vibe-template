@@ -22,4 +22,4 @@ Branch: `fix/branded-types-final-gaps`. Status: implementation done, PR open. Th
 
 - Four PG tests (`mfa-reset.pg.test.ts`, `privileged-session-lock-timeout.pg.test.ts`) still expected `String(id)` from `closeUserConnections`; they now expect the `UserId`. The unit specs had been updated, the PG suites are not run locally (no Postgres of this project), so CI caught them.
 - `UserConnection.staffAccessDeadline` is `UnixMs` (always finite, absent while the rule is off); its comment no longer mentions Infinity.
-- The timeout while deleting a test user in the same CI run: checked again on the next run (see below).
+- The timeout while deleting a test user in the same CI run did not come back: the next run (0e90740) has test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45972936168/job/140417537468); test-redis, quality, e2e, e2e-live green.
