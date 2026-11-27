@@ -189,7 +189,7 @@ await context.auth.login(result.value.userId, result.value.userToken)
 
 ## WsContext докладно
 
-Контекст створюється для кожного WS-повідомлення, яке дійшло до диспетчера (відомий маршрут, сесія `ok`), в [ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts) диспетчером [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts). Полів `session` і `auth` у `WsContext` немає: користувач береться з `userData`, тобто з даних з'єднання (`ws.getUserData()`). Сесію перевіряють при підключенні (upgrade) і на повідомлення відомого маршруту: в `onMessage` після перевірки формату конверта і пошуку маршруту, але до ліміту маршруту і валідації payload; heartbeat і невідомі події обробляються раніше, без читання сесії ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts)). Перевірка дає лише вердикт: немає сесії — з'єднання закривається з кодом `4001`, недоступні Redis чи БД — помилка `service_unavailable`, і обробник не викликається. Авторизація (роль, стан MFA) читає `userData`. Є також `requestId`, `logger` (з `requestId` і `userId`) і `signal`, який спрацьовує при закритті з'єднання.
+Контекст ([ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts)) створює диспетчер [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts) для повідомлення відомого маршруту з сесією `ok`: після ліміту маршруту (`checkRateLimitWs`) і валідації payload (`validateRoutePayload`), перед middleware. Полів `session` і `auth` у `WsContext` немає: користувач береться з `userData`, тобто з даних з'єднання (`ws.getUserData()`). Сесію перевіряють при підключенні (upgrade) і на повідомлення відомого маршруту: в `onMessage` після перевірки формату конверта і пошуку маршруту, але до ліміту маршруту і валідації payload; heartbeat і невідомі події обробляються раніше, без читання сесії ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts)). Перевірка дає лише вердикт: немає сесії — з'єднання закривається з кодом `4001`, недоступні Redis чи БД — помилка `service_unavailable`, і обробник не викликається. Авторизація (роль, стан MFA) читає `userData`. Є також `requestId`, `logger` (з `requestId` і `userId`) і `signal`, який спрацьовує при закритті з'єднання.
 
 ### `ws: MyWebSocket`
 
@@ -257,7 +257,10 @@ if (userData === null || userId === null) {
     return appErrorToPayload(unauthorized())
 }
 const payload = getTypedPayload(context)
-void supportService.chat(userId, payload.message, userData.uuid, context.signal)
+const admission = await supportService.admitChat(userId, payload.message)
+if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+void supportService.runChat(admission.value, userId, payload.message, userData.uuid, context.signal)
+return { status: 'ok' }
 ```
 
 ## Повернення даних і статус

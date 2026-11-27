@@ -189,7 +189,7 @@ The "is the user logged in" check at the route level is usually done by the auth
 
 ## WsContext in detail
 
-The context is created for every WS message that reaches the dispatcher (a known route, the session `ok`) in [ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts) by the [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts) dispatcher. `WsContext` has no `session` or `auth` fields: the user comes from `userData`, the connection's data (`ws.getUserData()`). The session is checked at connection time (upgrade) and on a message for a known route: in `onMessage` after the envelope format check and the route lookup, but before the route limit and payload validation; heartbeats and unknown events are handled earlier, without reading the session ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts)). The check answers only a verdict: no session — the connection is closed with code `4001`; Redis or the DB unavailable — a `service_unavailable` error; in both cases the handler is not called. Authorization (the role, the MFA state) reads `userData`. There are also `requestId`, `logger` (with `requestId` and `userId`) and `signal`, which fires when the connection closes.
+The context ([ws-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/ws-context.ts)) is created by the [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts) dispatcher for a message of a known route with the session `ok`: after the route limit (`checkRateLimitWs`) and payload validation (`validateRoutePayload`), before the middleware. `WsContext` has no `session` or `auth` fields: the user comes from `userData`, the connection's data (`ws.getUserData()`). The session is checked at connection time (upgrade) and on a message for a known route: in `onMessage` after the envelope format check and the route lookup, but before the route limit and payload validation; heartbeats and unknown events are handled earlier, without reading the session ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts)). The check answers only a verdict: no session — the connection is closed with code `4001`; Redis or the DB unavailable — a `service_unavailable` error; in both cases the handler is not called. Authorization (the role, the MFA state) reads `userData`. There are also `requestId`, `logger` (with `requestId` and `userId`) and `signal`, which fires when the connection closes.
 
 ### `ws: MyWebSocket`
 
@@ -257,7 +257,10 @@ if (userData === null || userId === null) {
     return appErrorToPayload(unauthorized())
 }
 const payload = getTypedPayload(context)
-void supportService.chat(userId, payload.message, userData.uuid, context.signal)
+const admission = await supportService.admitChat(userId, payload.message)
+if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+void supportService.runChat(admission.value, userId, payload.message, userData.uuid, context.signal)
+return { status: 'ok' }
 ```
 
 ## Returning data and status

@@ -83,7 +83,15 @@ session:<userToken>:<sessionId>` with the socket open, then a known-route event 
   only for a message that reaches the dispatcher). `docs:build` + `docs:verify` and
   `format:check` passed.
 
+## Review nits (a111952f)
+
+- `controllers.md` (both locales): the WsContext is made by the dispatcher after the route limit and
+  payload validation, before the middleware (not "at the dispatcher").
+- The `userData` example follows `support-controller.ts` (`admitChat` + `runChat`), not the old
+  `supportService.chat`.
+
 ## Notes for Next Session
 
-- Do the manual check (needs this project's PostgreSQL / Redis on 5432 / 6379).
+- Do the manual check (needs this project's PostgreSQL / Redis on 5432 / 6379); the owner runs it.
+- Record the CI run of the final commit (quality, Docs, test-pg, test-redis) above.
 - Then: status PR `feat-274` → `review`, review, merge, "Mark feat-274 done".
