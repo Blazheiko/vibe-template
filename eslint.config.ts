@@ -22,9 +22,11 @@ const ROUTE_CONTRACT_IMPORT_PATHS = [
     },
 ]
 
-// feat-275: Node built-ins only with the node: prefix ('node:crypto', not 'crypto').
+// feat-275: Node built-ins only with the node: prefix ('node:crypto', not 'crypto'). The legacy
+// _http_* / _stream_* / _tls_* names are importable without the prefix too, so they stay in the
+// list (feat-276).
 const NODE_BUILTIN_IMPORT_PATHS = builtinModules
-    .filter((name) => !name.startsWith('node:') && !name.startsWith('_'))
+    .filter((name) => !name.startsWith('node:'))
     .map((name) => ({
         name,
         message: `Import Node built-ins with the node: prefix: 'node:${name}'.`,
