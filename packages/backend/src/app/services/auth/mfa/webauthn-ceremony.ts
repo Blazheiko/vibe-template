@@ -1,3 +1,4 @@
+import { toMs } from 'shared/brand'
 import { randomBytes } from 'node:crypto'
 import {
     generateAuthenticationOptions,
@@ -78,7 +79,7 @@ export async function registrationOptions(input: {
         userDisplayName: input.displayName,
         userID: new Uint8Array(input.userHandle),
         attestationType: 'none',
-        timeout: webauthnConfig.challengeTtlSeconds * 1000,
+        timeout: toMs(webauthnConfig.challengeTtlSeconds),
         excludeCredentials: input.exclude.map((key) => ({
             id: toBase64Url(key.credentialId),
             ...(key.transports !== null ? { transports: key.transports } : {}),
@@ -93,7 +94,7 @@ export async function authenticationOptions(
 ): Promise<PublicKeyCredentialRequestOptionsJSON> {
     return generateAuthenticationOptions({
         rpID: webauthnConfig.rpId,
-        timeout: webauthnConfig.challengeTtlSeconds * 1000,
+        timeout: toMs(webauthnConfig.challengeTtlSeconds),
         userVerification: 'required',
         allowCredentials: allow.map((key) => ({
             id: toBase64Url(key.credentialId),

@@ -147,7 +147,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
             await db.select().from(mfaRecoveryCodes).where(eq(mfaRecoveryCodes.userId, target.id)),
         ).toEqual([])
         expect(await tokenOf(target.id)).not.toBe(before)
-        expect(closed).toHaveBeenCalledWith(String(target.id))
+        expect(closed).toHaveBeenCalledWith(target.id)
         // The records live under the token the account had before the rotation.
         expect(destroyed).toHaveBeenCalledWith(before)
         expect(security).toHaveBeenCalledWith(target.id, 'mfa_reset')

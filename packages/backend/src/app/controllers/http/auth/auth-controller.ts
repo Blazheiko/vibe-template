@@ -1,6 +1,6 @@
 import { stepUpService } from '#app/services/auth/mfa/step-up.js'
 import { presentedSessionTokenOf, sessionIdOf } from '#app/domain/secrets.js'
-import { toEntityId, asUserId } from '#app/domain/ids.js'
+import { asUserId } from '#app/domain/ids.js'
 import {
     completeSecondStep,
     secondStepPasskeyOptions,
@@ -259,7 +259,7 @@ export default {
             // feat-221: the service spared this session's connections for the renewal. Without
             // one they belong to a revoked session; the client signs in again.
             if (sessionId !== undefined) {
-                wsSessionRevocation.closeUserConnections(toEntityId(userId), {
+                wsSessionRevocation.closeUserConnections(userId, {
                     sessionId: sessionIdOf(sessionId),
                 })
             }

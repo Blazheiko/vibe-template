@@ -51,7 +51,7 @@ import {
 } from '../app/domain/secrets.js'
 import type { NormalizedEmail } from '../app/domain/email.js'
 import { sql, type SQL } from 'drizzle-orm'
-import { nanoid } from 'nanoid'
+import { newSmsChallengeId } from '../app/domain/ids.js'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
 import { AUDIT_ACTOR_KINDS } from 'shared/audit'
 import { ROLES } from 'shared/access'
@@ -399,7 +399,7 @@ export const smsAuthChallenges = pgTable(
         id: varchar('id', { length: 24 })
             .$type<SmsChallengeId>()
             .primaryKey()
-            .$defaultFn(() => nanoid()),
+            .$defaultFn(newSmsChallengeId),
         flow: smsAuthChallengeFlowEnum('flow').notNull(),
         phone: varchar('phone', { length: 20 }).notNull(),
         codeHash: varchar('code_hash', { length: 255 }).$type<OtpHash>().notNull(),

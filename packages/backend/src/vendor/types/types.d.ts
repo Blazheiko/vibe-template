@@ -1,7 +1,7 @@
 import type { WebSocket } from 'uWebSockets.js'
 import type { Logger } from 'pino'
 import type { BaseType } from '@arktype/type'
-import type { Seconds } from 'shared/brand'
+import type { Seconds, UnixMs } from 'shared/brand'
 import type { InferPayload, Validator } from '#vendor/contracts/validator.js'
 import type { BodyKind } from '../utils/network/http-request-handlers.js'
 import type { ResponseCheck } from '../utils/validation/validate-response.js'
@@ -35,10 +35,11 @@ export interface UserConnection extends Record<string, unknown> {
      */
     auth?: SessionAuthState
     /**
-     * feat-247 (Р11): when this connection stops meeting the staff MFA rule, in ms (Infinity
-     * while the rule is off); set while it is subscribed to the admin channel.
+     * feat-247 (Р11): when this connection stops meeting the staff MFA rule; set while it is
+     * subscribed to the admin channel. feat-273: always a finite instant; absent while the rule
+     * is off (the admin channel names that state 'none').
      */
-    staffAccessDeadline?: number
+    staffAccessDeadline?: UnixMs
     /** feat-247 (Р11): the admin channel was left because the staff MFA proof went stale. */
     mfaStale?: boolean
     uuid: string
@@ -152,7 +153,7 @@ export interface Auth {
      * feat-245 (Р4): sets (or with null clears) the second-step ticket cookie. feat-257: a ticket
      * comes with the value of its binding cookie (`bind`), set and cleared with it.
      */
-    setMfaTicketCookie: (ticketId: string | null, maxAgeSeconds: number, bind?: string) => void
+    setMfaTicketCookie: (ticketId: string | null, maxAgeSeconds: Seconds, bind?: string) => void
     /**
      * feat-245 (Р4): what a second-step sign-in will create, fixed once so a repeat creates the same
      * session (same id, device, auth state and recovery expiry). Pure: nothing is written.

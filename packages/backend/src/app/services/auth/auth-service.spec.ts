@@ -1210,7 +1210,7 @@ describe('authService', () => {
             await authService.logout(authMock as any, sessionMock as any)
 
             expect(closeUserConnections).toHaveBeenCalledTimes(1)
-            expect(closeUserConnections).toHaveBeenCalledWith('7', {
+            expect(closeUserConnections).toHaveBeenCalledWith(7n, {
                 sessionId: signedInSessionId,
             })
         })
@@ -1240,7 +1240,7 @@ describe('authService', () => {
             await authService.logoutAll(authMock as any, sessionMock as any, testUserActor())
 
             expect(order).toEqual(['rotate', 'close sockets'])
-            expect(closeUserConnections).toHaveBeenCalledWith('7')
+            expect(closeUserConnections).toHaveBeenCalledWith(7n)
         })
 
         it('logoutAll that lost to another revocation closes nothing', async () => {
@@ -1283,7 +1283,7 @@ describe('authService', () => {
             expect(Result.isOk(result)).toBe(true)
             expect(closeUserConnections).toHaveBeenCalledTimes(1)
             // feat-221: not the session that asked; the controller renews it first.
-            expect(closeUserConnections).toHaveBeenCalledWith('7', {
+            expect(closeUserConnections).toHaveBeenCalledWith(7n, {
                 exceptSessionId: 'asking-session',
             })
         })
@@ -1310,7 +1310,7 @@ describe('authService', () => {
                 FRESH_PASSWORD,
             )
 
-            expect(closeUserConnections).toHaveBeenCalledWith('7', {})
+            expect(closeUserConnections).toHaveBeenCalledWith(7n, {})
         })
 
         it('changePassword that changed nothing closes nothing', async () => {

@@ -11,8 +11,10 @@ import type {
     SessionInfo,
 } from '#vendor/types/types.js'
 import {
+    addMs,
     isValidEntityId,
     nowUnixMs,
+    toMs,
     seconds,
     unixSecondsOf,
     type Seconds,
@@ -314,7 +316,7 @@ export class RequestSession {
                     presentedUserToken = undefined
                 } else if (
                     info.data.auth?.recovery !== undefined &&
-                    !isActiveRecovery(info.data.auth, Date.now())
+                    !isActiveRecovery(info.data.auth, nowUnixMs())
                 ) {
                     // feat-245 (Р8): a recovery session ends at its absolute expiry, whatever the
                     // record's TTL says; the request goes on as a new anonymous session.
@@ -785,14 +787,14 @@ export class RequestSession {
 
     // --- cookies -----------------------------------------------------------------------
 
-    private setCookie(value: string, maxAge: number): void {
+    private setCookie(value: string, maxAge: Seconds): void {
         this.context.responseData.setCookie(sessionConfig.cookieName, value, {
             path: sessionConfig.cookie.path,
             httpOnly: sessionConfig.cookie.httpOnly,
             secure: sessionConfig.cookie.secure,
             maxAge,
             sameSite: sessionConfig.cookie.sameSite,
-            expires: new Date(Date.now() + maxAge * 1000),
+            expires: new Date(addMs(nowUnixMs(), toMs(maxAge))),
         })
     }
 
@@ -802,20 +804,20 @@ export class RequestSession {
      */
     private setMfaTicketCookie(
         ticketId: string | null,
-        maxAgeSeconds: number,
+        maxAgeSeconds: Seconds,
         bind?: string,
     ): void {
         if (ticketId !== null && (bind === undefined || bind === '')) {
             throw new Error('A second-step ticket cookie needs its binding cookie')
         }
-        const maxAge = ticketId === null ? 0 : maxAgeSeconds
+        const maxAge = ticketId === null ? seconds(0) : maxAgeSeconds
         const attributes = {
             path: '/',
             httpOnly: true,
             secure: sessionConfig.cookie.secure,
             maxAge,
             sameSite: 'Strict' as const,
-            expires: new Date(Date.now() + maxAge * 1000),
+            expires: new Date(addMs(nowUnixMs(), toMs(maxAge))),
         }
         this.context.responseData.setCookie(mfaTicketCookieName(), ticketId ?? '', attributes)
         this.context.responseData.setCookie(
@@ -829,7 +831,7 @@ export class RequestSession {
     private issueStoredCookie(
         sessionId: string,
         userToken: string | undefined,
-        maxAge: number,
+        maxAge: Seconds,
     ): void {
         this.setCookie(createSignedToken(`${userToken ?? ANON_TOKEN}.${sessionId}`), maxAge)
     }

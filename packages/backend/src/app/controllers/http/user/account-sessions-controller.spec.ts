@@ -86,7 +86,7 @@ describe('AccountSessionsController.revokeOtherSessions', () => {
             arrange()
             const response = await Controller.revokeOtherSessions(createContext())
             expect(response).toEqual({ status: 'success', sessionRenewed: false })
-            expect(closeUserConnections).toHaveBeenCalledWith('7', { sessionId: 's1' })
+            expect(closeUserConnections).toHaveBeenCalledWith(7n, { sessionId: 's1' })
         },
     )
 

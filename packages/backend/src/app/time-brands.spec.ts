@@ -26,8 +26,12 @@ import {
 } from '#vendor/utils/redis/redis-ttl.js'
 import type { storedSessionTtl as StoredSessionTtl } from '#vendor/utils/session/session-ttl.js'
 import type { adminChannelSubscribers as Subscribers } from '#app/services/admin/admin-channel-subscribers.js'
-import type { staffSessionDeadline as StaffSessionDeadline } from '#app/services/auth/mfa/staff-policy.js'
+import {
+    NO_STAFF_DEADLINE,
+    type staffSessionDeadline as StaffSessionDeadline,
+} from '#app/services/auth/mfa/staff-policy.js'
 import type { MyWebSocket } from '#vendor/types/types.js'
+import { isActiveRecovery, isFresh, sessionAuthOf } from 'shared/mfa'
 
 // feat-270 (plan Р7): the compiler keeps the units of time apart where they reach Redis, and an
 // instant in seconds apart from a duration in seconds. The calls behind `() =>` never run.
@@ -103,6 +107,15 @@ describe('the admin channel deadline is UnixMs', () => {
             },
             subscribers.dropExpired(nowUnixMs()),
             () => {
+                subscribers.set(ws, NO_STAFF_DEADLINE)
+            },
+            // feat-273: never is no instant; arithmetic needs the narrowing first.
+            deadline === null || deadline === NO_STAFF_DEADLINE ? 0 : diffMs(deadline, nowUnixMs()),
+            // @ts-expect-error a deadline that may be never is not an instant
+            deadline === null ? 0 : diffMs(deadline, nowUnixMs()),
+            // @ts-expect-error never is not an instant
+            diffMs(NO_STAFF_DEADLINE, nowUnixMs()),
+            () => {
                 // @ts-expect-error a duration is not a deadline
                 subscribers.set(ws, ms(60_000))
             },
@@ -116,6 +129,26 @@ describe('the admin channel deadline is UnixMs', () => {
             subscribers.dropExpired(seconds(1)),
         ]
         expect(typeof typeCases).toBe('function')
+    })
+})
+
+// feat-273: the freshness and recovery checks of shared/mfa take an instant and a window in
+// Seconds, as the staff policy does since feat-272.
+describe('shared/mfa time checks', () => {
+    it('isFresh / isActiveRecovery take UnixMs and Seconds', () => {
+        const auth = sessionAuthOf(undefined)
+        const typeCases = (): unknown[] => [
+            isFresh(auth, 'otp', nowUnixMs(), seconds(300)),
+            isActiveRecovery(auth, nowUnixMs()),
+            // @ts-expect-error a bare window names no unit
+            isFresh(auth, 'otp', nowUnixMs(), 300),
+            // @ts-expect-error a window in milliseconds is not one in seconds
+            isFresh(auth, 'otp', nowUnixMs(), ms(300_000)),
+            // @ts-expect-error Date.now() is no UnixMs until it is branded
+            isActiveRecovery(auth, Date.now()),
+        ]
+        expect(typeof typeCases).toBe('function')
+        expect(isFresh(auth, 'otp', nowUnixMs(), seconds(300))).toBe(false)
     })
 })
 

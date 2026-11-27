@@ -1,11 +1,12 @@
 import { createServer } from 'node:net'
 import { seconds, nowUnixMs } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
-import type {
-    MfaTicketId,
-    NormalizedRecoveryCode,
-    RawRecoveryCode,
-    SessionToken,
+import {
+    type MfaTicketId,
+    type NormalizedRecoveryCode,
+    type RawRecoveryCode,
+    type SessionToken,
+    sessionIdOf,
 } from '#app/domain/secrets.js'
 
 import { and, eq, isNull } from 'drizzle-orm'
@@ -1284,7 +1285,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 ip: '203.0.113.9',
                 userAgent: 'test',
                 appType: 'web',
-                sessionId,
+                sessionId: sessionIdOf(sessionId),
                 userToken,
             })
             return {

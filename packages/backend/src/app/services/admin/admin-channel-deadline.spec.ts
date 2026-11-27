@@ -40,6 +40,7 @@ vi.mock('#app/websocket/ws-connection-registry.js', () => ({
 
 const { adminWsChannelService } = await import('./admin-ws-channel-service.js')
 const { adminChannelSubscribers } = await import('./admin-channel-subscribers.js')
+const { NO_STAFF_DEADLINE } = await import('#app/services/auth/mfa/staff-policy.js')
 const { broadcastService } = await import('#app/services/communication/broadcast-service.js')
 
 const T0 = Date.parse('2026-11-22T08:00:00.000Z')
@@ -218,7 +219,9 @@ describe('admin channel deadline (feat-247, Р11)', () => {
         mfaConfig.requiredForStaff = false
         const { ws, userData } = socket('a', undefined)
         expect(Result.isOk(adminWsChannelService.subscribeCurrentAdminConnection(ws))).toBe(true)
-        expect(userData.staffAccessDeadline).toBe(Number.POSITIVE_INFINITY)
+        // feat-273: never is no number: the vendor field stays absent, the registry names it.
+        expect(userData.staffAccessDeadline).toBeUndefined()
+        expect(adminChannelSubscribers.deadlineOf(ws)).toBe(NO_STAFF_DEADLINE)
         expect(vi.getTimerCount()).toBe(0)
         vi.setSystemTime(T0 + 1000 * HOUR)
         publish()

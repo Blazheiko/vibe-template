@@ -5,7 +5,11 @@ import { MFA_REASONS } from 'shared/mfa'
 import { roleHasPermission } from 'shared/access'
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { forbidden, type AppResult } from '#app/services/shared/errors.js'
-import { NO_STAFF_DEADLINE, staffSessionDeadline } from '#app/services/auth/mfa/staff-policy.js'
+import {
+    NO_STAFF_DEADLINE,
+    staffSessionDeadline,
+    type StaffDeadline,
+} from '#app/services/auth/mfa/staff-policy.js'
 import { broadcastService } from '#app/services/communication/broadcast-service.js'
 import logger from '#vendor/utils/logger.js'
 import { isClosedSocketError } from '#vendor/utils/network/ws-session-expired.js'
@@ -33,7 +37,7 @@ const clearTimer = (ws: MyWebSocket): void => {
     timers.delete(ws)
 }
 
-const scheduleTimer = (ws: MyWebSocket, deadline: UnixMs, nowMs: UnixMs): void => {
+const scheduleTimer = (ws: MyWebSocket, deadline: StaffDeadline, nowMs: UnixMs): void => {
     clearTimer(ws)
     if (deadline === NO_STAFF_DEADLINE) return
     const delay = Math.min(Math.max(0, diffMs(deadline, nowMs)), MAX_TIMER_DELAY_MS)
@@ -43,6 +47,12 @@ const scheduleTimer = (ws: MyWebSocket, deadline: UnixMs, nowMs: UnixMs): void =
     }, delay)
     timer.unref()
     timers.set(ws, timer)
+}
+
+/** The connection's deadline as the vendor type keeps it: a number, absent for never. */
+const recordDeadline = (userData: UserConnection, deadline: StaffDeadline): void => {
+    if (deadline === NO_STAFF_DEADLINE) delete userData.staffAccessDeadline
+    else userData.staffAccessDeadline = deadline
 }
 
 /** Leaves the topic now, when the socket is still in it. */
@@ -110,7 +120,7 @@ export const adminWsChannelService = {
 
         ws.subscribe(ADMIN_CHANNEL)
         userData.isAdminChannelSubscribed = true
-        userData.staffAccessDeadline = deadline
+        recordDeadline(userData, deadline)
         userData.mfaStale = false
         adminChannelSubscribers.set(ws, deadline)
         scheduleTimer(ws, deadline, now)
@@ -155,7 +165,7 @@ export const adminWsChannelService = {
                 expire(ws, userData)
                 return false
             }
-            userData.staffAccessDeadline = deadline
+            recordDeadline(userData, deadline)
             adminChannelSubscribers.set(ws, deadline)
             scheduleTimer(ws, deadline, now)
             return false

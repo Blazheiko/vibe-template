@@ -1,4 +1,4 @@
-import { nowUnixMs, unixMs, type UnixMs } from 'shared/brand'
+import { nowUnixMs, type UnixMs } from 'shared/brand'
 import { isStaffRole, type Role } from 'shared/access'
 import {
     MFA_REASONS,
@@ -35,16 +35,21 @@ export function staffSessionMeets(
 }
 
 /**
- * feat-272: the deadline of a session while MFA_REQUIRED_FOR_STAFF is off. It never comes: the
- * admin channel keeps such a socket and schedules no timer for it (it sorts last).
+ * feat-272, feat-273: the deadline of a session while MFA_REQUIRED_FOR_STAFF is off. It never
+ * comes, and it is no number: the compiler keeps it apart from an instant, so a timer, an
+ * ordering or a comparison has to handle it by name (the admin channel schedules no timer for it
+ * and sorts it last).
  */
-export const NO_STAFF_DEADLINE: UnixMs = unixMs(Number.POSITIVE_INFINITY)
+export const NO_STAFF_DEADLINE = 'none' as const
+
+/** When a staff session stops meeting the rule: an instant, or never. */
+export type StaffDeadline = UnixMs | typeof NO_STAFF_DEADLINE
 
 /** When the staff session stops meeting the rule; null when it does not meet it now. */
 export function staffSessionDeadline(
     auth: SessionAuthState | undefined | null,
     now = nowUnixMs(),
-): UnixMs | null {
+): StaffDeadline | null {
     if (!mfaConfig.requiredForStaff) return NO_STAFF_DEADLINE
     return staffPolicy().sessionDeadline(auth, now, mfaConfig.staffFactorMaxAgeHours)
 }

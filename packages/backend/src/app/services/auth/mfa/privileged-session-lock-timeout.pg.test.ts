@@ -613,7 +613,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
                 reason: 'mfa_completion_pending',
             })
             expect(effects.closeUserConnections).toHaveBeenCalledTimes(1)
-            expect(effects.closeUserConnections).toHaveBeenCalledWith(String(newcomer.id), {
+            expect(effects.closeUserConnections).toHaveBeenCalledWith(newcomer.id, {
                 exceptSessionId: step.plan.sessionId,
                 userToken: rotatedToken,
             })
@@ -739,7 +739,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             ).toHaveLength(0)
             for (const call of effects.closeUserConnections.mock.calls as unknown[][]) {
                 expect(call).toEqual([
-                    String(newcomer.id),
+                    newcomer.id,
                     { exceptSessionId: step.plan.sessionId, userToken: rotatedToken },
                 ])
             }
@@ -783,7 +783,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             // Awaited before the success answer.
             expect(await stale.isStored()).toBe(false)
             expect(effects.closeUserConnections).toHaveBeenCalledTimes(1)
-            expect(effects.closeUserConnections).toHaveBeenCalledWith(String(newcomer.id), {
+            expect(effects.closeUserConnections).toHaveBeenCalledWith(newcomer.id, {
                 exceptSessionId: step.plan.sessionId,
                 userToken: rotatedToken,
             })

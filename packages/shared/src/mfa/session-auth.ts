@@ -3,6 +3,8 @@
 // freshness of each method proven in it (sign-in or step-up) and the recovery state. Plain data,
 // no schema library: the frontend reads `recovery` from main/init.
 
+import { diffMs, toMs, unixMs, type Seconds, type UnixMs } from '../brand/index.js'
+
 /** A method of a sign-in or a step-up, as stored in the session (`amr`, `verified`). */
 export const AUTH_METHOD_REFS = ['pwd', 'oauth', 'otp', 'webauthn', 'recovery'] as const
 export type AuthMethodRef = (typeof AUTH_METHOD_REFS)[number]
@@ -55,10 +57,10 @@ export const LEGACY_SESSION_AUTH: Readonly<SessionAuthState> = Object.freeze({
 export const sessionAuthOf = (auth: SessionAuthState | undefined | null): SessionAuthState =>
     auth ?? LEGACY_SESSION_AUTH
 
-const timeOf = (iso: string | undefined): number | null => {
+const timeOf = (iso: string | undefined): UnixMs | null => {
     if (iso === undefined) return null
-    const ms = Date.parse(iso)
-    return Number.isFinite(ms) ? ms : null
+    const at = Date.parse(iso)
+    return Number.isFinite(at) ? unixMs(at) : null
 }
 
 /** How far ahead of `now` a mark may be and still count (clock skew between instances). */
@@ -71,13 +73,13 @@ export const MARK_CLOCK_SKEW_MS = 60_000
 export function isFresh(
     auth: SessionAuthState,
     method: VerifiedMethodRef,
-    now: number,
-    windowSeconds: number,
+    now: UnixMs,
+    windowSeconds: Seconds,
 ): boolean {
     const at = timeOf(auth.verified[method])
     if (at === null) return false
     if (at > now + MARK_CLOCK_SKEW_MS) return false
-    return now - at <= windowSeconds * 1000
+    return diffMs(now, at) <= toMs(windowSeconds)
 }
 
 /**
@@ -87,9 +89,9 @@ export function isFresh(
 export function latestMark(
     auth: SessionAuthState,
     methods: readonly VerifiedMethodRef[],
-    now?: number,
-): number | null {
-    let latest: number | null = null
+    now?: UnixMs,
+): UnixMs | null {
+    let latest: UnixMs | null = null
     for (const method of methods) {
         const at = timeOf(auth.verified[method])
         if (at === null) continue
@@ -100,7 +102,7 @@ export function latestMark(
 }
 
 /** Whether the session is a recovery session that has not expired yet. */
-export function isActiveRecovery(auth: SessionAuthState, now: number): boolean {
+export function isActiveRecovery(auth: SessionAuthState, now: UnixMs): boolean {
     if (auth.recovery === undefined) return false
     const expiresAt = timeOf(auth.recovery.expiresAt)
     return expiresAt !== null && now < expiresAt

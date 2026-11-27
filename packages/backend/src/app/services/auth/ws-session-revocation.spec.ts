@@ -1,4 +1,5 @@
 import type { MyWebSocket } from '#vendor/types/types.js'
+import { uid } from '../../../test-support/ids.js'
 import { sessionIdOf, type SessionToken } from '#app/domain/secrets.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -73,7 +74,7 @@ describe('closeUserConnections', () => {
         const second = connection('1', 'b', 's2', 't')
         listUserConnections.mockReturnValue([first, second])
 
-        expect(wsSessionRevocation.closeUserConnections('1')).toBe(2)
+        expect(wsSessionRevocation.closeUserConnections(uid(1))).toBe(2)
 
         expect(listUserConnections).toHaveBeenCalledWith('1')
         for (const closed of [first, second]) {
@@ -92,7 +93,7 @@ describe('closeUserConnections', () => {
         listUserConnections.mockReturnValue([loggedOut, otherSession])
 
         expect(
-            wsSessionRevocation.closeUserConnections('1', { sessionId: sessionIdOf('s1') }),
+            wsSessionRevocation.closeUserConnections(uid(1), { sessionId: sessionIdOf('s1') }),
         ).toBe(1)
 
         expect(loggedOut.end).toHaveBeenCalledWith(4001)
@@ -108,7 +109,9 @@ describe('closeUserConnections', () => {
         listUserConnections.mockReturnValue([asked, sameSessionOtherTab, otherSession])
 
         expect(
-            wsSessionRevocation.closeUserConnections('1', { exceptSessionId: sessionIdOf('s1') }),
+            wsSessionRevocation.closeUserConnections(uid(1), {
+                exceptSessionId: sessionIdOf('s1'),
+            }),
         ).toBe(1)
 
         expect(otherSession.end).toHaveBeenCalledWith(4001)
@@ -129,7 +132,7 @@ describe('closeUserConnections', () => {
         listUserConnections.mockReturnValue([rotated, rotatedOtherSession, fresh, unknownToken])
 
         expect(
-            wsSessionRevocation.closeUserConnections('1', {
+            wsSessionRevocation.closeUserConnections(uid(1), {
                 exceptSessionId: sessionIdOf('s9'),
                 userToken: 'old' as SessionToken,
             }),
@@ -150,7 +153,7 @@ describe('closeUserConnections', () => {
         const open = connection('1', 'b', 's1', 't')
         listUserConnections.mockReturnValue([gone, open])
 
-        expect(wsSessionRevocation.closeUserConnections('1')).toBe(1)
+        expect(wsSessionRevocation.closeUserConnections(uid(1))).toBe(1)
         expect(open.end).toHaveBeenCalledWith(4001)
         expect(logger.error).not.toHaveBeenCalled()
     })
@@ -163,7 +166,7 @@ describe('closeUserConnections', () => {
         const open = connection('1', 'b', 's1', 't')
         listUserConnections.mockReturnValue([broken, open])
 
-        expect(wsSessionRevocation.closeUserConnections('1')).toBe(1)
+        expect(wsSessionRevocation.closeUserConnections(uid(1))).toBe(1)
         expect(open.end).toHaveBeenCalledWith(4001)
         expect(logger.error).toHaveBeenCalledTimes(1)
     })
@@ -173,7 +176,7 @@ describe('closeUserConnections', () => {
             throw new Error('registry broken')
         })
 
-        expect(wsSessionRevocation.closeUserConnections('1')).toBe(0)
+        expect(wsSessionRevocation.closeUserConnections(uid(1))).toBe(0)
         expect(logger.error).toHaveBeenCalledTimes(1)
     })
 })
@@ -240,8 +243,8 @@ describe('closeUserConnections: connections being opened (feat-210)', () => {
     it('marks them before it closes the registered ones, for the session or for the user', () => {
         listUserConnections.mockReturnValue([])
 
-        wsSessionRevocation.closeUserConnections('1', { sessionId: sessionIdOf('s1') })
-        wsSessionRevocation.closeUserConnections('1')
+        wsSessionRevocation.closeUserConnections(uid(1), { sessionId: sessionIdOf('s1') })
+        wsSessionRevocation.closeUserConnections(uid(1))
 
         expect(revokeConnecting.mock.calls).toEqual([
             ['1', 's1', undefined, undefined],

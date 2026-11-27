@@ -179,6 +179,9 @@ const methodsOf = (account: { totp: unknown; passkeys: number }): SecondStepMeth
  * Р4: after the first factor. Answers null when the account has no second factor (the caller
  * signs in as before), or the second step it opened: a ticket and its cookie.
  */
+/** The max-age that clears the mfa_ticket cookie (feat-273: a cookie age is Seconds). */
+const CLEARED = seconds(0)
+
 /** The ticket id of the mfa_ticket cookie, if the browser sent one (an empty one is none). */
 const mfaTicketCookieOf = (text: string | undefined): MfaTicketId | undefined =>
     text === undefined || text === '' ? undefined : mfaTicketIdOf(text)
@@ -375,7 +378,7 @@ export async function completeSecondStep(
         attemptId,
     )
     if (reserved.kind === 'invalid') {
-        context.auth.setMfaTicketCookie(null, 0)
+        context.auth.setMfaTicketCookie(null, CLEARED)
         return Result.err(ticketInvalid())
     }
     if (reserved.kind === 'busy') return Result.err(ticketInvalid())
@@ -415,7 +418,7 @@ async function continueByRequest(
 ): Promise<AppResult<AuthSuccessPayload>> {
     const ticket = await mfaTicketStore.read(ticketId)
     if (ticket?.binding !== binding) {
-        context.auth.setMfaTicketCookie(null, 0)
+        context.auth.setMfaTicketCookie(null, CLEARED)
         return Result.err(ticketInvalid())
     }
     if (ticket.state === 'open') return Result.err(attemptExpired())
@@ -487,7 +490,7 @@ async function attempt(
             challenge,
         })
         if (settled === 'stale') return Result.err(attemptExpired())
-        if (settled === 'deleted') context.auth.setMfaTicketCookie(null, 0)
+        if (settled === 'deleted') context.auth.setMfaTicketCookie(null, CLEARED)
         return Result.err(invalidCode())
     }
     if (input.method === 'webauthn') {
@@ -622,7 +625,7 @@ async function attempt(
                             unauthorized('Signed in already', MFA_REASONS.mfaTicketUsed),
                         )
                     }
-                    context.auth.setMfaTicketCookie(null, 0)
+                    context.auth.setMfaTicketCookie(null, CLEARED)
                     return Result.err(sessionRevoked())
                 }
                 case 'used':
@@ -634,7 +637,7 @@ async function attempt(
                     await release()
                     return Result.err(attemptExpired())
                 case 'gone':
-                    context.auth.setMfaTicketCookie(null, 0)
+                    context.auth.setMfaTicketCookie(null, CLEARED)
                     return Result.err(ticketInvalid())
                 case 'error':
                     await release()
@@ -658,7 +661,7 @@ async function attempt(
                 // attempt held it; the rollback deleted it. Answered, not thrown: an error
                 // answer carries the session cookie only, and the ticket cookie must be cleared.
                 logger.error({ err, userId: ticket.userId }, 'Second step rolled back')
-                context.auth.setMfaTicketCookie(null, 0)
+                context.auth.setMfaTicketCookie(null, CLEARED)
                 return Result.err(ticketInvalid())
             }
         } else {
@@ -755,7 +758,7 @@ async function reconcile(
         await discardPending(plan)
         const reopened = await reopenQuietly(ticketId, completionId, ticket.userId)
         if (reopened === 'deleted') {
-            context.auth.setMfaTicketCookie(null, 0)
+            context.auth.setMfaTicketCookie(null, CLEARED)
             return Result.err(ticketInvalid())
         }
         return Result.err(serviceUnavailable())
@@ -792,7 +795,7 @@ async function continueCompletion(
         const reopened = await reopenQuietly(ticketId, completionId, ticket.userId)
         if (reopened === 'deleted') {
             // feat-256 (item 1): late failures reached the limit while it was captured.
-            context.auth.setMfaTicketCookie(null, 0)
+            context.auth.setMfaTicketCookie(null, CLEARED)
             return Result.err(ticketInvalid())
         }
         if (reopened === 'no') return Result.err(completionPending())
@@ -831,7 +834,7 @@ async function activate(
             'Ticket of a revoked sign-in not deleted; it lapses with its TTL',
             { userId: plan.userId },
         )
-        context.auth.setMfaTicketCookie(null, 0)
+        context.auth.setMfaTicketCookie(null, CLEARED)
         return Result.err(sessionRevoked())
     }
     const recoveryExpiry = plan.auth.recovery?.expiresAt
@@ -842,7 +845,7 @@ async function activate(
             'Ticket of an expired recovery sign-in not deleted; it lapses with its TTL',
             { userId: plan.userId },
         )
-        context.auth.setMfaTicketCookie(null, 0)
+        context.auth.setMfaTicketCookie(null, CLEARED)
         return Result.err(ticketInvalid())
     }
     // feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 7): what the answer needs is read
@@ -890,7 +893,7 @@ async function activate(
         return Result.err(completionPending())
     }
     if (outcome === 'gone') {
-        context.auth.setMfaTicketCookie(null, 0)
+        context.auth.setMfaTicketCookie(null, CLEARED)
         return Result.err(ticketInvalid())
     }
 
@@ -912,7 +915,8 @@ async function endOtherSessions(
     plan: LoginPlan,
     currentSessionId: string,
 ): Promise<void> {
-    wsSessionRevocation.closeUserConnections(plan.userId, {
+    // The ticket's ids were checked on load (feat-271): plan.userId is a row id.
+    wsSessionRevocation.closeUserConnections(asUserId(plan.userId), {
         exceptSessionId: sessionIdOf(plan.sessionId),
         userToken: sessionTokenOf(ticket.userTokenAtStart),
     })
@@ -939,7 +943,7 @@ export async function retireCompletedTicket(
     if (ticketId === undefined || ticketId === '') return
     const outcome = await mfaTicketStore.retire(ticketId, completionId)
     if (outcome === 'foreign') return
-    auth.setMfaTicketCookie(null, 0)
+    auth.setMfaTicketCookie(null, CLEARED)
 }
 
 /**

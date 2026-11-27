@@ -3,7 +3,7 @@
 // can:, ws_can:, ws-role-sync, rows 9–10 of the proof matrix), so the passkey mode of feat-248
 // changes behaviour in one place.
 
-import { addMs, ms, unixMs, type UnixMs } from '../brand/index.js'
+import { addMs, ms, type UnixMs } from '../brand/index.js'
 import {
     isActiveRecovery,
     latestMark,
@@ -52,7 +52,7 @@ const anyPolicy: StaffMfaPolicy = {
         }
         const mark = latestMark(auth, ANY_FACTOR_MARKS, now)
         if (mark === null) return null
-        const deadline = addMs(unixMs(mark), ms(maxAgeHours * 3_600_000))
+        const deadline = addMs(mark, ms(maxAgeHours * 3_600_000))
         return now < deadline ? deadline : null
     },
     stepUpProofs: ['totp', 'webauthn'],
@@ -79,7 +79,7 @@ const passkeyPolicy: StaffMfaPolicy = {
         }
         const mark = latestMark(auth, PASSKEY_MARKS, now)
         if (mark === null) return null
-        const deadline = addMs(unixMs(mark), ms(maxAgeHours * 3_600_000))
+        const deadline = addMs(mark, ms(maxAgeHours * 3_600_000))
         return now < deadline ? deadline : null
     },
     stepUpProofs: ['webauthn'],

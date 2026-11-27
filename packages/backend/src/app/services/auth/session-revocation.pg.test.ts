@@ -1,6 +1,6 @@
 import { Result } from 'better-result'
 import type { NormalizedEmail } from '#app/domain/email.js'
-import type { RawToken, SessionToken } from '#app/domain/secrets.js'
+import { type RawToken, type SessionToken, sessionIdOf } from '#app/domain/secrets.js'
 import type { Redis } from 'ioredis'
 import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
 import { eq } from 'drizzle-orm'
@@ -571,7 +571,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 ip: '203.0.113.9',
                 userAgent: 'test',
                 appType: 'web',
-                sessionId,
+                sessionId: sessionIdOf(sessionId),
                 userToken,
             })
             opened.push({ userId: String(userId), uuid })

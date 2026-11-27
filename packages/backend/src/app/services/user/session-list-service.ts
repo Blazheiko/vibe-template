@@ -170,7 +170,7 @@ export const sessionListService = {
         })
         if (target === null) return Result.err(notFound('Session', 'Session not found'))
 
-        wsSessionRevocation.closeUserConnections(userId, { sessionId: sessionIdOf(target.sid) })
+        wsSessionRevocation.closeUserConnections(owner, { sessionId: sessionIdOf(target.sid) })
         userNotificationService.security(owner, 'session_revoked')
         sessionListChanged(userId)
         logger.info({ userId, sessionId: target.sid }, 'Session ended from the session list')
@@ -229,7 +229,7 @@ export const sessionListService = {
         // feat-221: the sockets of the session that asks stay; the controller renews it and the
         // client replaces its socket. Without a renewal the controller closes them.
         wsSessionRevocation.closeUserConnections(
-            String(userId),
+            userId,
             input.requestingSessionId === undefined
                 ? {}
                 : { exceptSessionId: sessionIdOf(input.requestingSessionId) },
