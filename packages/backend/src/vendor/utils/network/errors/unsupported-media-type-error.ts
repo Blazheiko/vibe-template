@@ -1,5 +1,5 @@
 import type { UnsupportedMediaTypeErrorDetails } from 'shared/errors'
-import type { BodyKind } from '../http-request-handlers.js'
+import type { BodyKind } from '#vendor/utils/network/http-request-handlers.js'
 import { HttpError } from './http-error.js'
 
 export class UnsupportedMediaTypeError extends HttpError {

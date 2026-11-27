@@ -1,6 +1,6 @@
 import logger from '#vendor/utils/logger.js'
 import { ms, seconds, toSecondsCeil, type Milliseconds, type Seconds } from 'shared/brand'
-import { rateLimitKeyForIp } from '../network/ip-address.js'
+import { rateLimitKeyForIp } from '#vendor/utils/network/ip-address.js'
 
 // In-memory, per-process, synchronous rate-limit store.
 //

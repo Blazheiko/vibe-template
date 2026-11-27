@@ -3,9 +3,9 @@ import type { Logger } from 'pino'
 import type { BaseType } from '@arktype/type'
 import type { Seconds, UnixMs } from 'shared/brand'
 import type { InferPayload, Validator } from '#vendor/contracts/validator.js'
-import type { BodyKind } from '../utils/network/http-request-handlers.js'
-import type { ResponseCheck } from '../utils/validation/validate-response.js'
-import type { WsMessageBudgetState } from '../utils/rate-limit/ws-message-budget.js'
+import type { BodyKind } from '#vendor/utils/network/http-request-handlers.js'
+import type { ResponseCheck } from '#vendor/utils/validation/validate-response.js'
+import type { WsMessageBudgetState } from '#vendor/utils/rate-limit/ws-message-budget.js'
 import type { WsErrorBody, WsReplyEnvelope, WsRequestEnvelope } from 'shared/ws-client'
 import type { Role } from 'shared/access'
 import type { SessionAuthState } from 'shared/mfa'
@@ -13,8 +13,6 @@ import type { SessionAuthState } from 'shared/mfa'
 export type Payload = Record<string, unknown> | string | Buffer | number | boolean | bigint | null
 
 export type Params = Record<string, string>
-
-export type ValidatorFunction = (payload: Payload) => Promise<Payload>
 
 export interface UserConnection extends Record<string, unknown> {
     ip: string
@@ -405,6 +403,10 @@ export interface ResponseData {
         (name: string, value: string, options?: CookieOptions): void
         (cookie: Cookie): void
     }
+    /**
+     * Sets a response header. A second call with the same name (case-insensitive) replaces the
+     * value. Cookies go through `setCookie`.
+     */
     setHeader: (name: string, value: string) => void
 }
 

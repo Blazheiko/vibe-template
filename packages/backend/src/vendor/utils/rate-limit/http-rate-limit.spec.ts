@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ResponseData, RouteItem } from '#vendor/types/types.js'
+// feat-275: the real builder, so the tests see the setHeader contract (one value per name).
+import { createResponseData } from '#vendor/utils/network/response-data.js'
 import type * as HttpRateLimit from './http-rate-limit.js'
 
 vi.mock('#vendor/utils/logger.js', () => ({
@@ -8,6 +10,12 @@ vi.mock('#vendor/utils/logger.js', () => ({
         debug: vi.fn(),
         error: vi.fn(),
         warn: vi.fn(),
+    },
+}))
+
+vi.mock('#config/cookies.js', () => ({
+    default: {
+        default: { path: '/', httpOnly: true, secure: true, maxAge: 3600, sameSite: 'Lax' },
     },
 }))
 
@@ -26,23 +34,6 @@ const createRoute = (rateLimit?: RouteItem['rateLimit'], method = 'post'): Route
         rateLimit,
         handler: vi.fn(),
     }) as unknown as RouteItem
-
-const createResponseData = (): ResponseData => {
-    const headers: { name: string; value: string }[] = []
-    return {
-        aborted: false,
-        payload: null,
-        middlewareData: {},
-        headers,
-        cookies: new Map(),
-        status: 200,
-        deleteCookie: vi.fn(),
-        setCookie: vi.fn(),
-        setHeader: (name: string, value: string) => {
-            headers.push({ name, value })
-        },
-    }
-}
 
 const headerValues = (responseData: ResponseData, name: string): string[] =>
     responseData.headers
@@ -73,7 +64,7 @@ describe('checkRateLimit', () => {
 
         expect(allowed).toBe(true)
         expect(responseData.status).toBe(200)
-        expect(responseData.payload).toBeNull()
+        expect(responseData.payload).toEqual({})
         expect(responseData.headers).toEqual([])
     })
 
@@ -178,6 +169,38 @@ describe('checkGlobalRateLimit (L1)', () => {
         expect(passed).toBe(false)
         expect(responseData.status).toBe(429)
         expect(check(limiter, '10.0.0.3', route).passed).toBe(true)
+    })
+
+    // feat-275: two sources of 429. One set of headers each: the && in server.ts keeps the
+    // route limit from running after L1 refuses.
+    it('L1 refusal: one Retry-After and one X-RateLimit-* set, all from L1', async () => {
+        const limiter = await load()
+        const route = createRoute({ windowMs: 60_000, maxRequests: 100 })
+        for (let i = 0; i < 3; i++) check(limiter, '10.0.0.6', route)
+
+        const { passed, responseData } = check(limiter, '10.0.0.6', route)
+        expect(passed).toBe(false)
+        expect(responseData.status).toBe(429)
+        expect(headerValues(responseData, 'retry-after')).toEqual(['60'])
+        expect(headerValues(responseData, 'x-ratelimit-limit')).toEqual(['3'])
+        expect(headerValues(responseData, 'x-ratelimit-remaining')).toEqual(['0'])
+        expect(headerValues(responseData, 'x-ratelimit-reset')).toHaveLength(1)
+        expect(responseData.headers).toHaveLength(4)
+    })
+
+    it('route refusal: one Retry-After and one X-RateLimit-* set, all from the route', async () => {
+        const limiter = await load()
+        const route = createRoute({ windowMs: 60_000, maxRequests: 1 })
+        check(limiter, '10.0.0.7', route)
+
+        const { passed, responseData } = check(limiter, '10.0.0.7', route)
+        expect(passed).toBe(false)
+        expect(responseData.status).toBe(429)
+        expect(headerValues(responseData, 'retry-after')).toEqual(['60'])
+        expect(headerValues(responseData, 'x-ratelimit-limit')).toEqual(['1'])
+        expect(headerValues(responseData, 'x-ratelimit-remaining')).toEqual(['0'])
+        expect(headerValues(responseData, 'x-ratelimit-reset')).toHaveLength(1)
+        expect(responseData.headers).toHaveLength(4)
     })
 
     it('fires before the route limit and describes itself on 429', async () => {

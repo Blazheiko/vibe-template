@@ -214,6 +214,9 @@ const parseUrlEncoded = (buffer: Buffer): Record<string, string> => {
     return payload
 }
 
+// One decoder for every text field: decode() without { stream } keeps no state between calls.
+const utf8Decoder = new TextDecoder()
+
 const parseMultipart = (buffer: Buffer, contentType: string): FormDataResult => {
     const payload = Object.create(null) as Record<string, string>
     const files = new Map<string, UploadedFile>()
@@ -230,8 +233,7 @@ const parseMultipart = (buffer: Buffer, contentType: string): FormDataResult => 
                 data: part.data,
             })
         } else {
-            const decoder = new TextDecoder()
-            payload[part.name] = decoder.decode(part.data)
+            payload[part.name] = utf8Decoder.decode(part.data)
         }
     }
 
@@ -295,11 +297,6 @@ const getData = async (
 
 // ─── URL / params helpers ─────────────────────────────────────────────────────
 
-const isValidUrl = (url: string): boolean => {
-    // Check for multiple consecutive slashes (e.g., //, ///)
-    return !/\/\/+/.test(url)
-}
-
 const extractParameters = (paramNames: string[], req: HttpRequest): Record<string, string> => {
     const params: Record<string, string> = {}
     for (let i = 0; i < paramNames.length; i++) {
@@ -341,4 +338,6 @@ const parseCookies = (cookieHeader: string): Map<string, string> => {
     return list
 }
 
-export { getHeaders, getData, extractParameters, isValidUrl, parseCookies }
+export { getHeaders, getData, extractParameters, parseCookies }
+// Exported for tests (feat-275: decoding of text fields through the real getParts).
+export { parseMultipart }

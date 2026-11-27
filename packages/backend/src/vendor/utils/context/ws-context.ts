@@ -2,7 +2,7 @@ import type { UserConnection, WsContext, WsData, WsResponseData } from '#vendor/
 
 import logger from '#vendor/utils/logger.js'
 import { connectionSignal } from '#vendor/utils/network/ws-connection-signal.js'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 
 export default (
     wsData: WsData,

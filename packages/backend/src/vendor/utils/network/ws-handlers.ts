@@ -1,6 +1,6 @@
 import logger from '#vendor/utils/logger.js'
 import { abortConnection } from './ws-connection-signal.js'
-import wsApiHandler from '../routing/ws-api-dispatcher.js'
+import wsApiHandler from '#vendor/utils/routing/ws-api-dispatcher.js'
 import { generateUUID } from 'metautil'
 import type {
     HttpRequest,
@@ -16,7 +16,7 @@ import type {
     WsMessage,
     WsRoutes,
 } from '#vendor/types/types.js'
-import { wsSessionHandler } from '../session/session-handler.js'
+import { wsSessionHandler } from '#vendor/utils/session/session-handler.js'
 import { touchSessionFromWs } from '#vendor/utils/session/ws-session-touch.js'
 import getIP from './get-ip.js'
 import checkUpgradeRateLimit, {

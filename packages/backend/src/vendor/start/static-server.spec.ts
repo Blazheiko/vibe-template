@@ -13,7 +13,8 @@ vi.mock('#config/app.js', () => ({
     },
 }))
 
-const { cacheFile, memoryEntry, staticCacheHandler } = await import('./static-server.js')
+const { cacheFile, memoryEntry, staticCacheHandler, toCacheKey } =
+    await import('./static-server.js')
 
 const STATIC_PATH = path.join(process.cwd(), './public-test')
 const HTML_NAME = 'static-server-etag-fixture.html'
@@ -124,5 +125,30 @@ describe('staticCacheHandler HTML validators', () => {
         expect(response.status).toBe('200 OK')
         expect(response.body).toBe(SHELL_B)
         expect(header(response, 'etag')).not.toBe(staleEtag)
+    })
+})
+
+// feat-275: keys are URL paths whatever the OS separator.
+describe('toCacheKey', () => {
+    it('maps a POSIX path under the root to a URL path', () => {
+        expect(toCacheKey('/srv/public', '/srv/public/assets/a.js', path.posix)).toBe(
+            '/assets/a.js',
+        )
+        expect(toCacheKey('/srv/public', '/srv/public/index.html', path.posix)).toBe('/index.html')
+    })
+
+    it('maps a Windows path under the root to a URL path', () => {
+        expect(toCacheKey('C:\\app\\public', 'C:\\app\\public\\assets\\a.js', path.win32)).toBe(
+            '/assets/a.js',
+        )
+        expect(toCacheKey('C:\\app\\public', 'C:\\app\\public\\index.html', path.win32)).toBe(
+            '/index.html',
+        )
+    })
+
+    it('matches the keys the server caches on this OS', () => {
+        expect(toCacheKey(STATIC_PATH, path.join(STATIC_PATH, 'assets', 'x.js'))).toBe(
+            '/assets/x.js',
+        )
     })
 })
