@@ -60,8 +60,13 @@ Registry PR: #892 (merged, `in_progress`). Status: implementation done, PR open.
   api-playground 11 files, shared 162, documentation 26, rule tests 30).
 - `pnpm docs:build && pnpm docs:verify`: passed.
 - PG and Redis suites: not run locally (the PostgreSQL / Redis on this machine belong to another
-  project). Evidence: CI `test-pg` (`pg-tests.yml`) and `test-redis` (`redis-tests.yml`) of the PR,
-  with the executed and skipped counts — to be added here.
+  project). CI of PR #893 (first push of the branch):
+    - `test-pg`: 72 files / 724 passed, 0 skipped
+      (https://github.com/Blazheiko/vibe-template/actions/runs/46006549050/job/140531030107);
+    - `test-redis`: 22 files / 231 passed, 0 skipped
+      (https://github.com/Blazheiko/vibe-template/actions/runs/46006548915/job/140531030379);
+    - `quality`, `e2e`, `e2e-live`, `build`: green
+      (https://github.com/Blazheiko/vibe-template/actions/runs/46006548772).
 - Manual golden path (`make dev-playground`): **not done yet**, needs this project's services.
   Steps: sign in, `support` / `admin` WS events answer as before; HTTP logout in another tab closes
   the socket with 4001 at once (ws-session-revocation); optionally `redis-cli DEL
@@ -70,5 +75,5 @@ session:<userToken>:<sessionId>` with the socket open, then a known-route event 
 
 ## Notes for Next Session
 
-- Add the CI test-pg / test-redis links and counts above; do the manual check.
+- Do the manual check (needs this project's PostgreSQL / Redis on 5432 / 6379).
 - Then: status PR `feat-274` → `review`, review, merge, "Mark feat-274 done".
