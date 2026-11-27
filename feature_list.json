@@ -2751,8 +2751,8 @@
             "owner": "Blazheiko",
             "branch": "fix/vendor-cleanup-review",
             "dependencies": ["feat-275"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #901 (merge 2ed1338), entry #900, status #902 (review). http-rate-limit.spec runs on fake timers at a fixed time, so the exact Retry-After: 60 expectations no longer depend on test duration; a new test advances 1.5 s and expects 59. The ESLint list of Node built-ins keeps the legacy _-prefixed names (negative check: '_http_common' in vendor and '_stream_readable' in src/app fail lint). main-service setHeaderAndCookie uses setHeader; main-service.spec fails on the old push and passes now. CI on 70b0874 (merge of main): test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46035255241/job/140628917160); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46035255323/job/140628918037); quality, e2e, e2e-live green; local make check exit 0 (backend 3954 tests). Seen once while checking: upload-limits.transport.spec ('20 parallel 50 MiB uploads') got a 400 under load, outside this change; the rerun was green."
         }
     ]
 }
