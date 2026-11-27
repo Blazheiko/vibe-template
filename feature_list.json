@@ -2711,8 +2711,8 @@
             "owner": "Blazheiko",
             "branch": "fix/branded-types-session-gaps",
             "dependencies": ["feat-271"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #885 (merge 58f5bcf), status #884 (in_progress), #886 (review). checkSessionToken(UserId, SessionToken) with the session layer hook checkSessionTokenText; SessionId brand for isSessionStored / closeUserConnections; typed TTL helpers moved to vendor/utils/redis/redis-ttl.ts (+ SET EX NX, GETEX EX), storedSessionTtl / prepareLogin / the absolute session age as Seconds and the sliding log window as Milliseconds up to Redis, the raw-TTL lint rule over the whole backend, toSecondsCeil in config/session.ts; toEntityId(RowId); the admin WS channel deadline as UnixMs with NO_STAFF_DEADLINE. Review round 2 (same PR): ws-coordinator closes a socket whose user id is not a row id, parseUserId in mainService.init / logout-all / the WS support controller, otpCodeMatches compares decoded buffers, database.md updated. CI on e9d6c5b: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45954738819/job/140358488121); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45954738759/job/140358487868); quality, e2e, e2e-live green (again on the merge of main, 49f9158); local make check exit 0 (backend 3933 tests); docs:build + docs:verify passed. Left for a follow-up: closeUserConnections(userId: string) and SessionId in ws-connection-registry, newSmsChallengeId() instead of nanoid() in schema.ts, the remaining * 1000 / now: number in webauthn-ceremony, shared/mfa/session-auth.ts and the request-session cookie maxAge."
         }
     ]
 }
