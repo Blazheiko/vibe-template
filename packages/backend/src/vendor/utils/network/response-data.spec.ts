@@ -119,3 +119,37 @@ describe('createResponseData.setCookie', () => {
         expect(header).toContain('; Path=/')
     })
 })
+
+// feat-275: setHeader sets, it does not append.
+describe('createResponseData.setHeader', () => {
+    it('keeps one entry for one call', () => {
+        const rd = createResponseData()
+        rd.setHeader('Location', '/a')
+        expect(rd.headers).toEqual([{ name: 'Location', value: '/a' }])
+    })
+
+    it('replaces the value when the same name is set again', () => {
+        const rd = createResponseData()
+        rd.setHeader('Retry-After', '1')
+        rd.setHeader('Retry-After', '60')
+        expect(rd.headers).toEqual([{ name: 'Retry-After', value: '60' }])
+    })
+
+    it('matches the name case-insensitively and keeps the first spelling', () => {
+        const rd = createResponseData()
+        rd.setHeader('Retry-After', '1')
+        rd.setHeader('retry-after', '60')
+        expect(rd.headers).toEqual([{ name: 'Retry-After', value: '60' }])
+    })
+
+    it('keeps different names in call order', () => {
+        const rd = createResponseData()
+        rd.setHeader('X-RateLimit-Limit', '10')
+        rd.setHeader('X-RateLimit-Remaining', '9')
+        rd.setHeader('X-RateLimit-Limit', '20')
+        expect(rd.headers).toEqual([
+            { name: 'X-RateLimit-Limit', value: '20' },
+            { name: 'X-RateLimit-Remaining', value: '9' },
+        ])
+    })
+})

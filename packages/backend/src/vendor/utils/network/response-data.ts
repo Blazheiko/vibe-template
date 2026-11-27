@@ -56,8 +56,13 @@ export const createResponseData = (): ResponseData => {
         })
     }
 
+    // feat-275: sets, does not append. A second call with the same name (any case) replaces
+    // the value and keeps the first spelling and position. Cookies go through setCookie.
     const setHeader: ResponseData['setHeader'] = (name: string, value: string): void => {
-        headers.push({ name, value })
+        const lower = name.toLowerCase()
+        const existing = headers.find((header) => header.name.toLowerCase() === lower)
+        if (existing !== undefined) existing.value = value
+        else headers.push({ name, value })
     }
 
     return {

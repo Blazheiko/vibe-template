@@ -403,6 +403,10 @@ export interface ResponseData {
         (name: string, value: string, options?: CookieOptions): void
         (cookie: Cookie): void
     }
+    /**
+     * Sets a response header. A second call with the same name (case-insensitive) replaces the
+     * value. Cookies go through `setCookie`.
+     */
     setHeader: (name: string, value: string) => void
 }
 
