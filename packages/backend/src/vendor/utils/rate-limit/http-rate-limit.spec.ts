@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ResponseData, RouteItem } from '#vendor/types/types.js'
 // feat-275: the real builder, so the tests see the setHeader contract (one value per name).
@@ -50,9 +50,20 @@ const check = (limiter: typeof HttpRateLimit, ip: string, route: RouteItem) => {
 
 const load = () => import('./http-rate-limit.js')
 
+// feat-276: Retry-After is what is left of the window, so a fixed clock keeps the exact values
+// (60) from depending on how long the test takes. The store reads Date.now, which the fake timers
+// replace; the limiter is imported after this hook (load()), so it sees the fake clock.
+const FIXED_NOW = new Date('2026-01-01T00:00:00.000Z')
+
 beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_NOW)
+})
+
+afterEach(() => {
+    vi.useRealTimers()
 })
 
 describe('checkRateLimit', () => {
@@ -102,6 +113,17 @@ describe('checkRateLimit', () => {
         expect(responseData.status).toBe(429)
         expect(headerValues(responseData, 'retry-after')).toEqual(['60'])
         expect(headerValues(responseData, 'x-ratelimit-limit')).toEqual(['1'])
+    })
+
+    // feat-276: the reason for the fixed clock above.
+    it('Retry-After is the rest of the window', async () => {
+        const limiter = await load()
+        const route = createRoute({ windowMs: 60_000, maxRequests: 1 })
+        check(limiter, '10.0.0.8', route)
+        vi.advanceTimersByTime(1_500)
+
+        const { responseData } = check(limiter, '10.0.0.8', route)
+        expect(headerValues(responseData, 'retry-after')).toEqual(['59'])
     })
 })
 
