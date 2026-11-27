@@ -67,6 +67,14 @@ Registry PR: #892 (merged, `in_progress`). Status: implementation done, PR open.
       (https://github.com/Blazheiko/vibe-template/actions/runs/46006548915/job/140531030379);
     - `quality`, `e2e`, `e2e-live`, `build`: green
       (https://github.com/Blazheiko/vibe-template/actions/runs/46006548772).
+- CI of the final commit `d642947`:
+    - `test-pg`: 72 files / 724 passed, 0 skipped
+      (https://github.com/Blazheiko/vibe-template/actions/runs/46009340859/job/140540540345);
+    - `test-redis`: 22 files / 231 passed, 0 skipped
+      (https://github.com/Blazheiko/vibe-template/actions/runs/46009340972/job/140540540205);
+    - `quality`, `e2e`, `e2e-live` green
+      (https://github.com/Blazheiko/vibe-template/actions/runs/46009341052); Docs `build` green
+      (https://github.com/Blazheiko/vibe-template/actions/runs/46009340926).
 - Manual golden path (`make dev-playground`): **not done yet**, needs this project's services.
   Steps: sign in, `support` / `admin` WS events answer as before; HTTP logout in another tab closes
   the socket with 4001 at once (ws-session-revocation); optionally `redis-cli DEL
@@ -93,5 +101,4 @@ session:<userToken>:<sessionId>` with the socket open, then a known-route event 
 ## Notes for Next Session
 
 - Do the manual check (needs this project's PostgreSQL / Redis on 5432 / 6379); the owner runs it.
-- Record the CI run of the final commit (quality, Docs, test-pg, test-redis) above.
 - Then: status PR `feat-274` → `review`, review, merge, "Mark feat-274 done".
