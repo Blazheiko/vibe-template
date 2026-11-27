@@ -219,7 +219,7 @@ For `500` the client receives only `"Internal server error"`. The exception text
 | Return data                        | `return respond(context, result, (value) => ({ status: 'success', ... }))` |
 | Return an error                    | `return mapControllerError(context, notFound('X', 'X not found'))`         |
 | A different success status (`201`) | `context.responseData.status = 201` before `return`                        |
-| Add a header                       | `context.responseData.setHeader('ETag', '"v1"')`                           |
+| Set a header                       | `context.responseData.setHeader('ETag', '"v1"')`                           |
 | Allow caching                      | `context.responseData.setHeader('Cache-Control', 'private, max-age=60')`   |
 | Set a cookie                       | `context.responseData.setCookie('name', 'value', { httpOnly: true })`      |
 | Respond without a body (`204`)     | Return `null` with status `200`                                            |

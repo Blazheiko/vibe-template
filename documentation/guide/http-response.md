@@ -219,7 +219,7 @@ export type UpdateSubscriptionResponse = typeof UpdateSubscriptionResponseSchema
 | Повернути дані                | `return respond(context, result, (value) => ({ status: 'success', ... }))` |
 | Повернути помилку             | `return mapControllerError(context, notFound('X', 'X not found'))`         |
 | Інший успішний статус (`201`) | `context.responseData.status = 201` перед `return`                         |
-| Додати заголовок              | `context.responseData.setHeader('ETag', '"v1"')`                           |
+| Поставити заголовок           | `context.responseData.setHeader('ETag', '"v1"')`                           |
 | Дозволити кешування           | `context.responseData.setHeader('Cache-Control', 'private, max-age=60')`   |
 | Поставити cookie              | `context.responseData.setCookie('name', 'value', { httpOnly: true })`      |
 | Відповісти без тіла (`204`)   | Повернути `null` зі статусом `200`                                         |
