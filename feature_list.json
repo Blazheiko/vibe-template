@@ -2863,6 +2863,16 @@
             "dependencies": ["feat-285"],
             "status": "not-started",
             "evidence": ""
+        },
+        {
+            "id": "feat-288",
+            "name": "e2e-live: passkey button step without a presence race",
+            "description": "passkeys.spec.ts:49, the button step, toggled the virtual authenticator's user presence on (WebAuthn.setAutomaticPresenceSimulation) only after the click; a get() that started before that never resolves, so the test passed only when the toggle won the race (failed on #913 and #914 after feat-278 changed the timings). The step now starts the autofill ceremony with presence off (it waits), waits for its options, turns presence on and then clicks the button, which replaces the waiting ceremony: the case the step was meant to cover. Test only.",
+            "owner": "Blazheiko",
+            "branch": "fix/e2e-live-passkey-button",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
