@@ -24,6 +24,10 @@ All tasks T8–T12 done; ready for review.
 - `header-keyboard.spec.ts --repeat-each 3`: 12 passed.
 - Golden path (mock e2e, phone viewport): sign-in state → /notifications → open the menu, move by Tab, Escape back to the hamburger; the same in Ukrainian.
 
+## Observed
+
+- e2e-live on the status PR #913 (feature_list.json only) failed once in `passkeys.spec.ts:49`, at the button step (`present(false)` → click → `present(true)` → `/account`); the rerun was green. The autofill step of the same test passed. Not seen in the 30 runs before; recorded as a timing flake of that test, to watch.
+
 ## Notes for Next Session
 
 - Next feature for this owner: `feat-280` (lazy Sentry SDK).
