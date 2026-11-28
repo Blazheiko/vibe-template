@@ -19,8 +19,8 @@ All tasks T8–T12 done; ready for review.
 
 ## Evidence of Completion
 
-- `make check`: exit 0 (frontend 1030 tests, backend 3989; bundle graph 762 modules).
-- `pnpm --filter frontend test:e2e`: 138 passed (134 + 4 new).
+- `make check`: exit 0 after merging `main` with feat-278 (frontend 1050 tests, backend 3989; `check-cold-start-budget: /login max 280.6 KB (uk)`, +0.5 KB for the new strings).
+- `pnpm --filter frontend test:e2e`: 138 passed (134 + 4 new), before and after merging `main`.
 - `header-keyboard.spec.ts --repeat-each 3`: 12 passed.
 - Golden path (mock e2e, phone viewport): sign-in state → /notifications → open the menu, move by Tab, Escape back to the hamburger; the same in Ukrainian.
 
