@@ -189,6 +189,39 @@ const uk: typeof en = {
         errorVerificationCode: 'Вкажіть код підтвердження',
     },
 
+    menu: {
+        open: 'Відкрити меню',
+        close: 'Закрити меню',
+        navigation: 'Навігація',
+        support: 'Підтримка',
+        account: 'Акаунт',
+        about: 'Про проєкт',
+        accountGroup: 'Акаунт',
+        myAccount: 'Мій акаунт',
+        lightTheme: 'Світла тема',
+        darkTheme: 'Темна тема',
+        legal: 'Правила й підтримка',
+        aiPolicy: 'Політика щодо ШІ',
+        privacyPolicy: 'Політика конфіденційності',
+        terms: 'Умови користування',
+        cookies: 'Політика cookie',
+        logout: 'Вийти',
+        loggingOut: 'Вихід...',
+        installApp: 'Встановити застосунок',
+    },
+
+    header: {
+        back: 'Назад',
+        support: 'Підтримка',
+        websocketStatus: 'Стан WebSocket: {status}',
+        websocket: {
+            open: 'Підключено',
+            connecting: 'Підключення...',
+            closed: 'Відключено',
+            unknown: 'Невідомо',
+        },
+    },
+
     update: {
         title: 'Доступне оновлення',
         subtitle: 'Оновіть сторінку, щоб користуватися останньою версією.',

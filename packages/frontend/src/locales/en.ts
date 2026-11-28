@@ -187,6 +187,39 @@ export default {
         errorVerificationCode: 'Verification code is required',
     },
 
+    menu: {
+        open: 'Open menu',
+        close: 'Close menu',
+        navigation: 'Navigation',
+        support: 'Support',
+        account: 'Account',
+        about: 'About',
+        accountGroup: 'Account',
+        myAccount: 'My Account',
+        lightTheme: 'Light Theme',
+        darkTheme: 'Dark Theme',
+        legal: 'Legal & Support',
+        aiPolicy: 'AI Policy',
+        privacyPolicy: 'Privacy Policy',
+        terms: 'Terms & Conditions',
+        cookies: 'Cookies Policy',
+        logout: 'Logout',
+        loggingOut: 'Logging out...',
+        installApp: 'Install App',
+    },
+
+    header: {
+        back: 'Back',
+        support: 'Support',
+        websocketStatus: 'WebSocket Status: {status}',
+        websocket: {
+            open: 'Connected',
+            connecting: 'Connecting...',
+            closed: 'Disconnected',
+            unknown: 'Unknown',
+        },
+    },
+
     update: {
         title: 'Update available',
         subtitle: 'Refresh to use the latest version.',

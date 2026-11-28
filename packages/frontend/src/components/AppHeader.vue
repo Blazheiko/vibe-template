@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import MenuButton from '@/components/MenuButton.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import { useUserStore } from '@/stores/user'
@@ -19,6 +20,7 @@ defineProps({
 })
 
 const router = useRouter()
+const { t } = useI18n()
 const route = useRoute()
 
 const activeNav = computed(() => route.path)
@@ -32,13 +34,13 @@ const { statusWebSocket } = useWebSocketConnection()
 const websocketStatusText = computed(() => {
     switch (statusWebSocket.value) {
         case 'OPEN':
-            return 'Connected'
+            return t('header.websocket.open')
         case 'CONNECTING':
-            return 'Connecting...'
+            return t('header.websocket.connecting')
         case 'CLOSED':
-            return 'Disconnected'
+            return t('header.websocket.closed')
         default:
-            return 'Unknown'
+            return t('header.websocket.unknown')
     }
 })
 
@@ -65,8 +67,16 @@ const goBack = () => {
     <header class="app-header">
         <div class="header-content">
             <div class="left-side">
-                <button v-if="showBack" class="back-button" @click="goBack">
+                <!-- feat-279: the span is hidden on narrow screens, the aria-label keeps the name. -->
+                <button
+                    v-if="showBack"
+                    type="button"
+                    class="back-button"
+                    :aria-label="t('header.back')"
+                    @click="goBack"
+                >
                     <svg
+                        aria-hidden="true"
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
                         width="24"
@@ -75,7 +85,7 @@ const goBack = () => {
                     >
                         <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
                     </svg>
-                    <span>Back</span>
+                    <span>{{ t('header.back') }}</span>
                 </button>
             </div>
 
@@ -85,7 +95,8 @@ const goBack = () => {
                         class="nav-item"
                         :class="{ active: activeNav === '/support' }"
                         @click="router.push('/support')"
-                        title="Support"
+                        type="button"
+                        :title="t('header.support')"
                     >
                         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                             <path
@@ -93,7 +104,7 @@ const goBack = () => {
                                 fill="currentColor"
                             />
                         </svg>
-                        <span>Support</span>
+                        <span>{{ t('header.support') }}</span>
                     </button>
                 </nav>
 
@@ -103,7 +114,7 @@ const goBack = () => {
                 <div
                     class="websocket-status"
                     :class="websocketStatusClass"
-                    :title="`WebSocket Status: ${websocketStatusText}`"
+                    :title="t('header.websocketStatus', { status: websocketStatusText })"
                 >
                     <div class="status-dot"></div>
                     <span class="status-text">{{ websocketStatusText }}</span>
