@@ -36,8 +36,6 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Копируем файлы для установки зависимостей
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# pnpm.patchedDependencies (patches/) применяется во время install.
-COPY patches ./patches
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/frontend/package.json ./packages/frontend/
@@ -125,8 +123,6 @@ RUN groupadd --system app \
 
 # Копируем файлы для установки зависимостей
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# pnpm.patchedDependencies (patches/) применяется во время install.
-COPY patches ./patches
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/frontend/package.json ./packages/frontend/

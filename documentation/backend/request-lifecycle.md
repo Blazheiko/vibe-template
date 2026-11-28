@@ -24,6 +24,27 @@
 
 `setCorsHeader` завжди пише `Vary: Origin`, а `Access-Control-Allow-*` — лише якщо `Origin` є в `corsConfig.allowedOrigins`.
 
+`OPTIONS *` (asterisk-form, RFC 9112 §3.2.4) uWS теж передає в `any("/*")`, з `getUrl()` = `*`. Це не шлях під `/<pathPrefix>/`, тому L1 rate limit його не рахує, як і будь-який інший `OPTIONS` поза API: з `corsConfig.enabled` — `200` (з `Access-Control-Allow-*` лише для дозволеного `Origin`), без нього — `404`.
+
+## Що uWS відхиляє сам
+
+Частину запитів `uWebSockets.js` (`v20.72.0`, ядро `v20.81.0`) відхиляє сам: відповідає `400 Bad Request` з `Connection: close` і власним HTML-тілом без `Content-Length`, а потім закриває з'єднання. Нашого JSON-тіла помилки, CORS- (навіть для дозволеного `Origin` з увімкненим CORS) і security-заголовків у такій відповіді немає; формат закріплено тестами. Відмови бувають двох класів.
+
+**До обробника** — наш код не виконується зовсім:
+
+- request target з байтом поза видимим ASCII (сирий UTF-8 у шляху; закодований `%D0%BF` проходить як звичайно);
+- `Host` з `/`, `?` або `#`;
+- понад ~100 заголовків або керівний символ у значенні заголовка ([нотатки feat-215](https://github.com/Blazheiko/vibe-template/blob/main/docs/security/security-review-2026-11-12-follow-ups.md)). Байти понад `0x7F` на **краях** значення uWS обрізає, як пробіли, а не відхиляє ([header-values.live.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/header-values.live.spec.ts)).
+
+**Після заголовків** — обробник маршруту вже викликано, і помилку uWS знаходить, коли наші мікрозадачі (middleware і контролер) уже виконались. Тому перевірка прапорця abort після читання тіла тут не допомагає: `onAborted` настає пізніше.
+
+- `Content-Length` ≥ 2^56: uWS викликає обробник, а потім, ще до тіла, перериває запит (`onAborted`) і відповідає `400`. Для методів з тілом (`POST`, `PUT`, `PATCH`) контролер не запускається: такий `Content-Length` більший за будь-який ліміт тіла. `GET` і `DELETE` тіла не читають, тож їхній контролер **виконується** (з побічними ефектами), а клієнт отримує `400` від uWS.
+- Трейлер після останнього chunk з голим LF: трейлери розбираються **після** тіла, тож `onData` уже віддав останній шматок, і контролер виконується за будь-якого розбиття на пакети. Клієнт отримує `400` від uWS, а якщо `0\r\n` прийшов окремо раніше за трейлер — навіть нашу відповідь, і лише потім закриття.
+
+Наслідок той самий, що й коли клієнт обриває з'єднання посеред запиту: побічні ефекти звичайного запиту, відповідь губиться. Нашої відповіді `setHttpHandler` тоді не пише: перед `sendResponse` він бачить `abortSignal.aborted` і виходить, тож і помилки в лозі немає. Якщо ж наша відповідь пішла раніше за помилку (випадок з `0\r\n` вище), клієнт її отримує, а закриття настає після. Нового вектора це не дає: той самий клієнт міг надіслати валідний запит.
+
+Поведінку бібліотеки закріплює [uws-native.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-native.transport.spec.ts), її наслідки для наших маршрутів — [uws-parser.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-parser.transport.spec.ts). Тест-клієнт, який перевіряє, хто закрив з'єднання, — `exchangeUntilClose` з [raw-http.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/test-support/raw-http.ts).
+
 ## Обробка HTTP-запиту (setHttpHandler)
 
 ```mermaid
