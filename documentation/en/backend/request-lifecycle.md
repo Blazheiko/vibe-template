@@ -36,12 +36,14 @@ Some requests are refused by `uWebSockets.js` (`v20.72.0`, core `v20.81.0`) itse
 - a `Host` with `/`, `?` or `#`;
 - more than about 100 headers, or a control character in a header value ([feat-215 notes](https://github.com/Blazheiko/vibe-template/blob/main/docs/security/security-review-2026-11-12-follow-ups.md)). Bytes above `0x7F` at the **ends** of a value are trimmed by uWS like spaces, not refused ([header-values.live.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/header-values.live.spec.ts)).
 
-**While reading the body** — the route handler has already been called:
+**After the headers** — the route handler has already been called, and uWS finds the error after our microtasks (middleware and the controller) have run. So a check of the abort flag after reading the body does not help here: `onAborted` comes later.
 
-- `Content-Length` of 2^56 or more: uWS calls the handler, then, before any body, aborts the request (`onAborted`) and answers `400`. The controller does not run, because such a `Content-Length` is over every body limit.
-- A trailer with a bare LF after the last chunk: trailers are parsed **after** the body, so `onData` has already delivered the last piece and the controller may have run (with its side effects), but the client gets uWS's `400`, not the controller's answer. Writing the answer to the closed connection is quiet, with no error in the log.
+- `Content-Length` of 2^56 or more: uWS calls the handler, then, before any body, aborts the request (`onAborted`) and answers `400`. For methods with a body (`POST`, `PUT`, `PATCH`) the controller does not run: such a `Content-Length` is over every body limit. `GET` and `DELETE` do not read a body, so their controller **runs** (with its side effects), and the client gets uWS's `400`.
+- A trailer with a bare LF after the last chunk: trailers are parsed **after** the body, so `onData` has already delivered the last piece and the controller runs however the packets are split. The client gets uWS's `400`, or, when `0\r\n` came on its own before the trailer, even our answer, and only then the close.
 
-The library behaviour is pinned by [uws-native.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-native.transport.spec.ts), its effect on our routes by [uws-parser.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-parser.transport.spec.ts). The test client that shows who closed the connection is `exchangeUntilClose` in `test-support/raw-http.ts`.
+The effect is the same as a client that drops the connection mid-request: the side effects of an ordinary request, and a lost answer. Writing the answer to the closed connection is quiet, with no error in the log. It opens no new vector: the same client could send a valid request.
+
+The library behaviour is pinned by [uws-native.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-native.transport.spec.ts), its effect on our routes by [uws-parser.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-parser.transport.spec.ts). The test client that shows who closed the connection is `exchangeUntilClose` in [raw-http.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/test-support/raw-http.ts).
 
 ## Handling an HTTP request (setHttpHandler)
 

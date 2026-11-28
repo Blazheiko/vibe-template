@@ -7,7 +7,7 @@ import path from 'node:path'
 import * as uWS from 'uWebSockets.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { exchangeUntilClose, getFreePort } from '../../test-support/raw-http.js'
+import { exchangeUntilClose, getFreePort, writeLater } from '../../test-support/raw-http.js'
 
 /**
  * feat-277: uWebSockets.js v20.72.0 (core v20.81.0) itself, on a bare uWS app with no
@@ -32,9 +32,12 @@ const PORT = await getFreePort()
 const FILE = randomBytes(16 * 1024 * 1024)
 const sha256 = (data: Buffer): string => createHash('sha256').update(data).digest('hex')
 
-// Cyrillic, CJK, emoji (surrogate pairs in JS), a combining mark; and a long variant.
+// Cyrillic, CJK, emoji (surrogate pairs in JS), a combining mark; and a long variant
+// (about 2.2 MiB of UTF-8).
 const MIXED = 'Привіт, світе! 你好 😀🚀👩‍💻 é '
 const LONG = MIXED.repeat(40_000)
+// Room for LONG in one send, so a small socket buffer on a CI runner cannot make uWS drop it.
+const WS_MAX_BACKPRESSURE = 16 * 1024 * 1024
 
 let dir: string
 let entry: Entry
@@ -70,6 +73,8 @@ beforeAll(async () => {
         })
     })
     app.ws<{ kind: string }>('/ws/:kind', {
+        maxPayloadLength: WS_MAX_BACKPRESSURE,
+        maxBackpressure: WS_MAX_BACKPRESSURE,
         upgrade: (res, req, context) => {
             res.upgrade(
                 { kind: req.getParameter(0) ?? '' },
@@ -104,35 +109,71 @@ interface Download {
     body: Buffer
 }
 
-/** GET with a client that reads nothing for `pauseMs`, then everything up to Content-Length. */
+/**
+ * GET with a client that reads nothing for `pauseMs`, then everything up to Content-Length.
+ * The chunks are kept in a list and joined once: joining on every chunk would copy the
+ * 16 MiB body hundreds of times.
+ */
 const slowDownload = (pauseMs: number, timeoutMs = 20_000): Promise<Download> =>
     new Promise<Download>((resolve, reject) => {
-        let data = Buffer.alloc(0)
+        let head: Buffer = Buffer.alloc(0)
+        let headText: string | null = null
+        let length = Number.NaN
+        const bodyChunks: Buffer[] = []
+        let bodyBytes = 0
+        let done = false
+        const finish = (error: Error | null): void => {
+            if (done) return
+            done = true
+            clearTimeout(timer)
+            clearTimeout(resumeTimer)
+            socket.destroy()
+            if (error !== null) {
+                reject(error)
+                return
+            }
+            resolve({
+                head: headText ?? '',
+                body: Buffer.concat(bodyChunks, bodyBytes).subarray(0, length),
+            })
+        }
+        let resumeTimer: NodeJS.Timeout | undefined
         const socket = connect(PORT, '127.0.0.1', () => {
             socket.write('GET /big.bin HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n')
             socket.pause()
-            setTimeout(() => socket.resume(), pauseMs)
+            resumeTimer = setTimeout(() => {
+                if (!socket.destroyed) socket.resume()
+            }, pauseMs)
         })
         const timer = setTimeout(() => {
-            socket.destroy()
-            reject(new Error(`download not complete within ${String(timeoutMs)} ms`))
+            finish(new Error(`download not complete within ${String(timeoutMs)} ms`))
         }, timeoutMs)
         socket.on('data', (chunk: Buffer) => {
-            data = Buffer.concat([data, chunk])
-            const headerEnd = data.indexOf('\r\n\r\n')
-            if (headerEnd === -1) return
-            const head = data.subarray(0, headerEnd).toString()
-            const length = Number(/content-length:\s*(\d+)/i.exec(head)?.[1] ?? 'NaN')
-            const body = data.subarray(headerEnd + 4)
-            if (body.byteLength >= length) {
-                clearTimeout(timer)
-                socket.destroy()
-                resolve({ head, body: body.subarray(0, length) })
+            if (headText === null) {
+                head = Buffer.concat([head, chunk])
+                const headerEnd = head.indexOf('\r\n\r\n')
+                if (headerEnd === -1) return
+                headText = head.subarray(0, headerEnd).toString()
+                length = Number(/content-length:\s*(\d+)/i.exec(headText)?.[1] ?? 'NaN')
+                if (!Number.isFinite(length)) {
+                    finish(new Error(`no Content-Length in: ${headText}`))
+                    return
+                }
+                chunk = head.subarray(headerEnd + 4)
             }
+            bodyChunks.push(chunk)
+            bodyBytes += chunk.byteLength
+            if (bodyBytes >= length) finish(null)
         })
         socket.on('error', (err) => {
-            clearTimeout(timer)
-            reject(err)
+            finish(err)
+        })
+        socket.on('close', () => {
+            finish(
+                new Error(
+                    `connection closed after ${String(bodyBytes)} of ${String(length)} body bytes`,
+                ),
+            )
         })
     })
 
@@ -140,7 +181,7 @@ const refusal = async (raw: string | Buffer, laterRaw?: string) => {
     anyCalls = []
     const result = await exchangeUntilClose(PORT, (socket) => {
         socket.write(raw)
-        if (laterRaw !== undefined) setTimeout(() => socket.write(laterRaw), 100)
+        if (laterRaw !== undefined) writeLater(socket, laterRaw, 100)
     })
     // Let onAborted run after the close.
     await new Promise((resolve) => setTimeout(resolve, 20))
@@ -174,33 +215,40 @@ describe('requests uWS refuses before any handler runs (class 1)', () => {
     })
 })
 
+const CHUNKED_POST = 'POST / HTTP/1.1\r\nHost: a\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n'
+
 describe('requests uWS refuses only after the handler ran (class 2)', () => {
-    it('Content-Length of 2^56 or more: the handler runs, then 400 and abort before any body', async () => {
-        const result = await refusal(
-            'POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 72057594037927936\r\n\r\n',
-        )
+    it.each(['POST', 'DELETE', 'GET'])(
+        '%s with a Content-Length of 2^56 or more: the handler runs, then 400 and abort',
+        async (method) => {
+            const result = await refusal(
+                `${method} / HTTP/1.1\r\nHost: a\r\nContent-Length: 72057594037927936\r\n\r\n`,
+            )
 
-        expectUws400(result)
-        expect(anyCalls).toEqual(['handler', 'aborted'])
-    })
+            expectUws400(result)
+            expect(anyCalls).toEqual(['handler', 'aborted'])
+        },
+    )
 
-    it('a bare LF in a trailer sent with the body: the body has already ended', async () => {
-        const result = await refusal(
-            'POST / HTTP/1.1\r\nHost: a\r\nTransfer-Encoding: chunked\r\n\r\n' +
-                '3\r\nabc\r\n0\r\nX: y\n\r\n',
-        )
+    it('a bare-LF trailer in the same packet as the body: the body has already ended', async () => {
+        const result = await refusal(`${CHUNKED_POST}0\r\nX: y\n\r\n`)
 
         expectUws400(result)
         expect(anyCalls.slice(0, 2)).toEqual(['handler', 'body end'])
     })
 
-    it('a bare LF in a trailer that comes later: the body has already ended', async () => {
-        const result = await refusal(
-            'POST / HTTP/1.1\r\nHost: a\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n',
-            '0\r\nX: y\n\r\n',
-        )
+    it('the last data chunk first, then "0" and the bare-LF trailer: the body ends with them', async () => {
+        const result = await refusal(CHUNKED_POST, '0\r\nX: y\n\r\n')
 
         expectUws400(result)
+        expect(anyCalls.slice(0, 2)).toEqual(['handler', 'body end'])
+    })
+
+    it('"0" first, the bare-LF trailer later: the answer to the ended body goes out, then the close', async () => {
+        const result = await refusal(`${CHUNKED_POST}0\r\n`, 'X: y\n\r\n')
+
+        expect(result.response?.statusLine).toBe('HTTP/1.1 200 OK')
+        expect(result.closedByServer).toBe(true)
         expect(anyCalls.slice(0, 2)).toEqual(['handler', 'body end'])
     })
 })

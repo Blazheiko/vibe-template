@@ -21,8 +21,12 @@ Plan: `docs/plan/uwebsockets-upgrade-plan.md` (rev. 3, PR #904). Branch `chore/u
 - **Two classes of refusal, not as planned.** A bare-uWS probe shows `Content-Length` ≥ 2^56 is
   refused **after** the route handler is called (handler → `onAborted` → 400), not before it as the
   plan put it. Class 1 (no handler): raw UTF-8 target, `Host` with `/`, `?`, `#`. Class 2 (handler
-  called): huge `Content-Length` (our body limit keeps the controller from running), bare-LF
-  trailer (the controller may have run; its answer is dropped quietly). Pinned in
+  called): huge `Content-Length` (on POST/PUT/PATCH our body limit keeps the controller from
+  running; GET and DELETE read no body, so their controller runs), bare-LF trailer (the
+  controller runs in every packet split; with `0\r\n` sent before the trailer the client even
+  gets our 200 before the close). Checking the abort flag after `readAndParseBody` does not stop
+  any of these (tried during review): uWS finds the error after our microtasks, the controller
+  included. Same effect as a client that drops the connection mid-request. Pinned in
   `uws-native.transport.spec.ts` (bare uWS) and `uws-parser.transport.spec.ts` (our server);
   documented in `request-lifecycle.md`.
 - **vitest fs module cache hides a dependency swap.** `node_modules/.vitest-cache` keeps the
@@ -69,8 +73,8 @@ Plan: `docs/plan/uwebsockets-upgrade-plan.md` (rev. 3, PR #904). Branch `chore/u
   `vibe-template-app:uws-20.72-amd64`), but the stack did not start: the stand-in services
   (mailpit and the rest) are cached here for arm64 only, and pulling amd64 over those tags would
   change images another project's running containers use. So the amd64 app image was checked
-  directly under emulation (`docker run --platform linux/amd64`): `linux x64 abi 137 node v24.22.2
-uws 20.72.0`, both import forms, a uWS server answers `GET` with `200 ok`. The full suites on
+  directly under emulation (`docker run --platform linux/amd64`): `linux x64 abi 137 node
+v24.22.2 uws 20.72.0`, both import forms, a uWS server answers `GET` with `200 ok`. The full suites on
   native linux/x64 are the CI jobs below (ubuntu-24.04 / ubuntu-latest, x64).
 - CI on `e2c515a7` (PR #905): `test-pg` 72 files / 724 passed, 0 skipped
   (https://github.com/Blazheiko/vibe-template/actions/runs/46116551814); `test-redis` 22 files /
@@ -83,6 +87,24 @@ uws 20.72.0`, both import forms, a uWS server answers `GET` with `200 ok`. The f
   passkeys; `v2/api` prefix: `mfa-continuation.spec.ts` only).
 - Avatar upload is not in `e2e-live`; uploads on the real server are covered by
   `upload-limits.transport.spec.ts` (green in `quality` and locally).
+- Not run manually in a browser: a WS message and an avatar upload (covered by `e2e-live` and
+  `upload-limits.transport.spec.ts`). The SIGTERM part of the golden path was run (arm64 above).
+
+## Review round 1 (after `ffb188df`)
+
+- Docs: class 2 now says which methods the body limit protects (POST/PUT/PATCH) and that GET and
+  DELETE run their controller; the trailer case in all three packet splits; why an abort check
+  does not help. `raw-http.ts` linked like the specs.
+- Tests: GET and DELETE with a huge `Content-Length` (our server: the controller has run; bare
+  uWS: handler → abort); three trailer splits on both sides, named by what is sent when.
+  `exchangeUntilClose` rejects when the connection never opened (`ECONNREFUSED` checked); the
+  new `writeLater` drops its timer when the socket closes; `slowDownload` keeps the chunks in a
+  list and joins once, fails on a missing `Content-Length` and on an early close; the WS test app
+  sets `maxBackpressure`/`maxPayloadLength` to 16 MiB for the 2.2 MiB message.
+- The suggested `if (abortSignal.aborted) return` after `readAndParseBody` was tried and changes
+  nothing (the controller ran in all five cases), so `server.ts` is unchanged.
+- After the fixes: `make check` exit 0 (backend 3986 tests = 3980 + 6), `pnpm docs:build &&
+pnpm docs:verify` passed, the two uWS specs 32/32.
 
 ## Rollback images
 

@@ -4,6 +4,7 @@ import {
     exchange,
     exchangeUntilClose,
     getFreePort,
+    writeLater,
     type ClosedExchange,
 } from '../../test-support/raw-http.js'
 
@@ -13,8 +14,11 @@ import {
  * bytes go out. Two classes of refusal (documentation/backend/request-lifecycle.md; the
  * bare-uWS side is pinned in uws-native.transport.spec.ts):
  * 1. request target and Host: uWS answers 400 before any handler runs;
- * 2. found while reading the body (Content-Length of 2^56+, trailers): our handler has
- *    already been called, the client still gets uWS's 400 and the connection closes.
+ * 2. found after the headers (Content-Length of 2^56+, trailers): our handler has already
+ *    been called, and so has the controller unless something else stopped the request
+ *    first (the body limit on a method with a body). The client gets uWS's 400 (or our
+ *    answer, when it went out first) and the connection closes. A check of the abort flag
+ *    would not help: uWS reports the error after our microtasks, the controller included.
  */
 
 const PORT = await getFreePort()
@@ -68,6 +72,9 @@ const text = vi.fn((context: { httpData: { params: Record<string, string> } }) =
     return { text: kind === 'long' ? LONG : kind === 'empty' ? '' : MIXED }
 })
 
+const remove = vi.fn(() => ({ ok: true }))
+const read = vi.fn(() => ({ ok: true }))
+
 const route = (method: string, url: string, handler: unknown, extra: object = {}) => ({
     method,
     url: `api/${url}`,
@@ -82,6 +89,8 @@ const route = (method: string, url: string, handler: unknown, extra: object = {}
 const routes = [
     route('post', 'parser/echo', echo, { allowedContentTypes: ['json'] }),
     route('get', 'parser/text/:kind', text, { parametersKey: ['kind'] }),
+    route('del', 'parser/item', remove),
+    route('get', 'parser/item', read),
 ]
 
 let stopServer: (type?: string) => Promise<void>
@@ -113,13 +122,15 @@ afterAll(async () => {
 beforeEach(() => {
     echo.mockClear()
     text.mockClear()
+    remove.mockClear()
+    read.mockClear()
     loggerError.mockClear()
     cors.enabled = false
 })
 
 const UWS_400 = 'HTTP/1.1 400 Bad Request'
 
-/** A class-1 refusal: uWS's own 400, the server closes the connection, no handler ran. */
+/** uWS's own 400 with Connection: close, and the server closed the connection. */
 const expectParserRefusal = (result: ClosedExchange): void => {
     expect(result.response?.statusLine).toBe(UWS_400)
     expect(result.response?.headers.get('connection')).toBe('close')
@@ -165,8 +176,10 @@ describe('uWS refuses the request line and headers itself (class 1)', () => {
     )
 })
 
+const HUGE_LENGTH = 'Content-Length: 72057594037927936\r\n'
+
 describe('a Content-Length of 2^56 or more (uWebSockets #1969, class 2)', () => {
-    it('gets uWS 400 and a close; our body limit keeps the controller from running', async () => {
+    it('POST: uWS 400 and a close; our body limit keeps the controller from running', async () => {
         const result = await sendRaw(
             'POST /api/parser/echo HTTP/1.1\r\nHost: 127.0.0.1\r\n' +
                 'Content-Type: application/json\r\nContent-Length: 72057594037927936\r\n\r\n{}',
@@ -174,6 +187,22 @@ describe('a Content-Length of 2^56 or more (uWebSockets #1969, class 2)', () => 
 
         expectParserRefusal(result)
         expect(echo).not.toHaveBeenCalled()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        expect(loggerError).not.toHaveBeenCalled()
+    })
+
+    // A method without a body does not read it, so no limit stops the request: the
+    // controller runs (side effects included) and the client still gets uWS's 400.
+    it.each([
+        ['DELETE', remove],
+        ['GET', read],
+    ])('%s: uWS 400 and a close, but the controller has run', async (method, controller) => {
+        const result = await sendRaw(
+            `${method} /api/parser/item HTTP/1.1\r\nHost: 127.0.0.1\r\n${HUGE_LENGTH}\r\n`,
+        )
+
+        expectParserRefusal(result)
+        expect(controller).toHaveBeenCalledTimes(1)
         await new Promise((resolve) => setTimeout(resolve, 50))
         expect(loggerError).not.toHaveBeenCalled()
     })
@@ -195,31 +224,47 @@ describe('trailers after the last chunk (uWebSockets #1950)', () => {
         expect(echo).toHaveBeenCalledTimes(1)
     })
 
-    it('answers 400 to a trailer with a bare LF sent with the body (class 2, one packet)', async () => {
-        const result = await sendRaw(`${chunkedHead}${firstChunk}0\r\nX-Trailer: y\n\r\n`)
-
-        expectParserRefusal(result)
-        await new Promise((resolve) => setTimeout(resolve, 50))
-        expect(loggerError).not.toHaveBeenCalled()
-    })
-
-    it('answers 400 to a bare-LF trailer that comes after the body: the handler has already run (class 2)', async () => {
-        const result = await exchangeUntilClose(PORT, (socket) => {
-            socket.write(`${chunkedHead}${firstChunk}`)
-            setTimeout(() => socket.write('0\r\nX-Trailer: y\n\r\n'), 100)
-        })
-
-        expect(result.response?.statusLine).toBe(UWS_400)
-        expect(result.closedByServer).toBe(true)
-        // The body ended (last = true) before uWS parsed the trailer.
-        expect(echo).toHaveBeenCalledTimes(1)
-        // Our answer to the gone request is dropped quietly; the server keeps serving.
+    // A bare LF in a trailer (class 2): the body has ended before uWS parses the trailer,
+    // so the controller runs in every split of the packets. Our answer is dropped quietly
+    // and the server keeps serving.
+    const expectServerFine = async (): Promise<void> => {
         await new Promise((resolve) => setTimeout(resolve, 50))
         expect(loggerError).not.toHaveBeenCalled()
         const next = await exchange(PORT, (socket) => {
             socket.write('GET /api/parser/text/a HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n')
         })
         expect(next.statusLine).toBe('HTTP/1.1 200 OK')
+    }
+
+    it('bare-LF trailer in the same packet as the body: 400, the controller has run', async () => {
+        const result = await sendRaw(`${chunkedHead}${firstChunk}0\r\nX-Trailer: y\n\r\n`)
+
+        expectParserRefusal(result)
+        expect(echo).toHaveBeenCalledTimes(1)
+        await expectServerFine()
+    })
+
+    it('last chunk, then "0" with the bare-LF trailer later: 400, the controller has run', async () => {
+        const result = await exchangeUntilClose(PORT, (socket) => {
+            socket.write(`${chunkedHead}${firstChunk}`)
+            writeLater(socket, '0\r\nX-Trailer: y\n\r\n', 100)
+        })
+
+        expectParserRefusal(result)
+        expect(echo).toHaveBeenCalledTimes(1)
+        await expectServerFine()
+    })
+
+    it('body ended with "0", the bare-LF trailer later: our 200 goes out first, then the close', async () => {
+        const result = await exchangeUntilClose(PORT, (socket) => {
+            socket.write(`${chunkedHead}${firstChunk}0\r\n`)
+            writeLater(socket, 'X-Trailer: y\n\r\n', 100)
+        })
+
+        expect(result.response?.statusLine).toBe('HTTP/1.1 200 OK')
+        expect(result.closedByServer).toBe(true)
+        expect(echo).toHaveBeenCalledTimes(1)
+        await expectServerFine()
     })
 })
 
