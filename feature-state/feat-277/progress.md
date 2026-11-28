@@ -4,12 +4,12 @@ Plan: `docs/plan/uwebsockets-upgrade-plan.md` (rev. 3, PR #904). Branch `chore/u
 
 ## State
 
-| Step                   | State                         | Commit     |
-| ---------------------- | ----------------------------- | ---------- |
-| 1. Version and patch   | done                          | `a9d6b7d4` |
-| 2. Parser/writer tests | done                          | `e46eeb7a` |
-| 3. Documentation       | done                          | `4cc40506` |
-| 4. Verification (DoD)  | in progress (amd64 smoke, CI) | —          |
+| Step                   | State | Commit     |
+| ---------------------- | ----- | ---------- |
+| 1. Version and patch   | done  | `a9d6b7d4` |
+| 2. Parser/writer tests | done  | `e46eeb7a` |
+| 3. Documentation       | done  | `4cc40506` |
+| 4. Verification (DoD)  | done  | —          |
 
 ## Baseline
 
@@ -64,8 +64,25 @@ Plan: `docs/plan/uwebsockets-upgrade-plan.md` (rev. 3, PR #904). Branch `chore/u
   no `uws.js`. `docker stop` (SIGTERM): stopped in 1 s, exit code 0, log `stop SIGTERM` →
   `server stop type: SIGTERM`.
 
-Still to record: linux/amd64 `prod-smoke` (emulated), CI `quality`, `test-pg`, `test-redis`,
-`e2e-live` (x64) on the feature PR.
+- **linux/amd64**: `DOCKER_DEFAULT_PLATFORM=linux/amd64 make prod-smoke` built every image for
+  amd64 (app `sha256:f1a68fce09a6c4d5d421593add66cd2d93087237ec06126e8adc9ed4da68e3f9`, tagged
+  `vibe-template-app:uws-20.72-amd64`), but the stack did not start: the stand-in services
+  (mailpit and the rest) are cached here for arm64 only, and pulling amd64 over those tags would
+  change images another project's running containers use. So the amd64 app image was checked
+  directly under emulation (`docker run --platform linux/amd64`): `linux x64 abi 137 node v24.22.2
+uws 20.72.0`, both import forms, a uWS server answers `GET` with `200 ok`. The full suites on
+  native linux/x64 are the CI jobs below (ubuntu-24.04 / ubuntu-latest, x64).
+- CI on `e2c515a7` (PR #905): `test-pg` 72 files / 724 passed, 0 skipped
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46116551814); `test-redis` 22 files /
+  231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46116551847);
+  `e2e` and `build` green.
+
+- `quality` and `e2e-live` green on `e2c515a7`
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46116551838): `e2e-live` runs the real
+  backend on uWS 20.72.0 (sign-in, sessions, WebSocket close after logout and on revocation, MFA,
+  passkeys; `v2/api` prefix: `mfa-continuation.spec.ts` only).
+- Avatar upload is not in `e2e-live`; uploads on the real server are covered by
+  `upload-limits.transport.spec.ts` (green in `quality` and locally).
 
 ## Rollback images
 
@@ -81,4 +98,5 @@ checked: `linux arm64 abi 137 uws 20.71.0`):
 
 ## Notes for Next Session
 
-- Merging needs the owner's go-ahead (PR #904 and the feature PR).
+- Ready for review. Merging needs the owner's go-ahead: #904 (plan + registry, green) first, then
+  #905. After the merge: a status PR (`review`) and the "Mark feat-277 done" PR with the evidence.
