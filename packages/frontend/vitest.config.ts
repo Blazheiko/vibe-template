@@ -12,6 +12,7 @@ export default mergeConfig(
                 'e2e/**',
                 'e2e-csp/**',
                 'e2e-security/**',
+                'e2e-stale-build/**',
                 'e2e-live/**',
             ],
             root: fileURLToPath(new URL('./', import.meta.url)),

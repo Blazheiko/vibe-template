@@ -3,20 +3,11 @@ import { redirectWithoutUrlToken } from '@/utils/one-time-url-token'
 import { scrollToHash } from '@/utils/scroll-to-hash'
 import type { RouteRecordRaw } from 'vue-router'
 import Login from '@/views/Login.vue'
-import UserAccount from '@/views/UserAccount.vue'
-import ManifestoSocial from '@/views/ManifestoSocial.vue'
-import SupportView from '@/views/SupportView.vue'
-import AdminLayout from '@/views/admin/AdminLayout.vue'
-import AdminKnowledgeBaseView from '@/views/admin/AdminKnowledgeBaseView.vue'
-import AdminUsersView from '@/views/admin/AdminUsersView.vue'
-import AdminUserOnlineView from '@/views/admin/AdminUserOnlineView.vue'
-import AdminHistoryOnlineView from '@/views/admin/AdminHistoryOnlineView.vue'
 import { adminRedirect } from '@/views/admin/admin-pages'
-import VerifyEmailView from '@/views/VerifyEmailView.vue'
-import ResetPasswordView from '@/views/ResetPasswordView.vue'
-import OAuthLinkConfirmView from '@/views/OAuthLinkConfirmView.vue'
 import { useUserStore, waitForApp } from '@/stores/user'
 
+// feat-278: every page except Login is a lazy chunk, so a cold /login loads only the sign-in
+// page. A chunk that fails to load is recovered by utils/preload-recovery.ts.
 // Не вызывайте store вне функции навигационной защиты
 // const userStore = useUserStore()
 const routes: RouteRecordRaw[] = [
@@ -40,26 +31,26 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/verify-email',
         name: 'VerifyEmail',
-        component: VerifyEmailView,
+        component: () => import('@/views/VerifyEmailView.vue'),
         meta: { hideHeader: true },
     },
     {
         // feat-097: the mailed link that confirms an OAuth sign-in into an existing account.
         path: '/oauth/link/confirm',
         name: 'OAuthLinkConfirm',
-        component: OAuthLinkConfirmView,
+        component: () => import('@/views/OAuthLinkConfirmView.vue'),
         meta: { hideHeader: true },
     },
     {
         path: '/reset-password',
         name: 'ResetPassword',
-        component: ResetPasswordView,
+        component: () => import('@/views/ResetPasswordView.vue'),
         meta: { hideHeader: true },
     },
     {
         path: '/support',
         name: 'Support',
-        component: SupportView,
+        component: () => import('@/views/SupportView.vue'),
         meta: {
             requiresAuth: true,
             title: 'Support',
@@ -69,7 +60,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/account',
         name: 'UserAccount',
-        component: UserAccount,
+        component: () => import('@/views/UserAccount.vue'),
         meta: {
             requiresAuth: true,
             title: 'Account Settings',
@@ -92,7 +83,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/about',
         name: 'About',
-        component: ManifestoSocial,
+        component: () => import('@/views/ManifestoSocial.vue'),
     },
     {
         path: '/privacy-policy',
@@ -120,36 +111,35 @@ const routes: RouteRecordRaw[] = [
     },
     {
         path: '/admin',
-        component: AdminLayout,
+        component: () => import('@/views/admin/AdminLayout.vue'),
         // feat-240: `/admin` itself goes to the first page the role may see (the guard below).
         meta: { requiresAuth: true, requiresStaff: true, hideHeader: true },
         children: [
             {
                 path: 'knowledge-base',
                 name: 'AdminKnowledgeBase',
-                component: AdminKnowledgeBaseView,
+                component: () => import('@/views/admin/AdminKnowledgeBaseView.vue'),
                 meta: { permission: 'kb.read' },
             },
             {
                 path: 'users',
                 name: 'AdminUsers',
-                component: AdminUsersView,
+                component: () => import('@/views/admin/AdminUsersView.vue'),
                 meta: { permission: 'users.read' },
             },
             {
                 path: 'user-online',
                 name: 'AdminUserOnline',
-                component: AdminUserOnlineView,
+                component: () => import('@/views/admin/AdminUserOnlineView.vue'),
                 meta: { permission: 'users.read' },
             },
             {
                 path: 'history-online',
                 name: 'AdminHistoryOnline',
-                component: AdminHistoryOnlineView,
+                component: () => import('@/views/admin/AdminHistoryOnlineView.vue'),
                 meta: { permission: 'users.sensitive.read' },
             },
             {
-                // feat-235: a lazy chunk of the admin area.
                 path: 'audit-log',
                 name: 'AdminAuditLog',
                 component: () => import('@/views/admin/AdminAuditLogView.vue'),

@@ -15,6 +15,7 @@ import { useEventBus } from '@/utils/event-bus'
 import AppHeader from '@/components/AppHeader.vue'
 import ReauthDialog from '@/components/account/ReauthDialog.vue'
 import UpdateNotification from '@/components/UpdateNotification.vue'
+import ChunkLoadNotice from '@/components/ChunkLoadNotice.vue'
 import AiDisclosureBanner from '@/components/AiDisclosureBanner.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
@@ -229,6 +230,7 @@ const initializeApp = async () => {
         </template>
 
         <UpdateNotification v-if="hasUpdate" @refresh="refreshApp" @dismiss="dismissUpdate" />
+        <ChunkLoadNotice />
 
         <!-- Универсальные toast-уведомления -->
 

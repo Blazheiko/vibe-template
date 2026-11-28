@@ -17,6 +17,7 @@
         "playwright.live.config.*",
         "playwright.live-passkey.config.*",
         "playwright.live-prefix.config.*",
+        "playwright.stale-build.config.*",
         "e2e-security/fixtures.ts",
         "e2e-live/fixtures.ts",
         "eslint.config.*"
