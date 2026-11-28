@@ -116,7 +116,7 @@ Plan: `docs/plan/uwebsockets-upgrade-plan.md` (rev. 3, PR #904). Branch `chore/u
 - The suggested `if (abortSignal.aborted) return` after `readAndParseBody` was tried and changes
   nothing (the controller ran in all five cases), so `server.ts` is unchanged.
 - After the fixes: `make check` exit 0 (backend 3986 tests = 3980 + 6), `pnpm docs:build &&
-pnpm docs:verify` passed, the two uWS specs 32/32.
+  pnpm docs:verify` passed, the two uWS specs 32/32.
 
 ## Rollback images
 
@@ -144,7 +144,14 @@ checked: `linux arm64 abi 137 uws 20.71.0`):
   the client gets it.
 - Process order fixed below (AGENTS.md: `review` before the implementation merge).
 - After the fixes: `make check` exit 0 (backend 3989 tests = 3986 + 3), `pnpm docs:build &&
-pnpm docs:verify` passed, the two uWS specs 35/35.
+  pnpm docs:verify` passed, the two uWS specs 35/35.
+- CI on the final head `337ba0b3`, all green: `test-pg` 72 files / 724 passed, 0 skipped
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46125459385); `test-redis` 22 files /
+  231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46125459434);
+  `quality`, `e2e`, `e2e-live`, `build`
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46125459410); Docs
+  (https://github.com/Blazheiko/vibe-template/actions/runs/46125459384). These supersede the
+  `e2c515a7` links above and go into `evidence` when feat-277 is closed.
 
 ## Notes for Next Session
 
