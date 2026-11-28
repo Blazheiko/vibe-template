@@ -61,13 +61,24 @@ test('a passkey added on the account page signs in alone, from the autofill and 
         await expect(first.page.getByText(account.email)).toBeVisible()
 
         // The button: the autofill request waits (no user), the button replaces it.
+        // feat-288: with presence off, a request that has started never resolves, even when
+        // presence is turned on later (WebAuthn.setAutomaticPresenceSimulation applies to the
+        // requests that start after it). So the waiting one is the autofill request, and presence
+        // is on again before the button starts its own.
         await first.context.clearCookies()
         await authenticator.present(false)
         await first.page.goto('/login')
-        // The button starts its ceremony (it would replace a pending autofill one), and the user
-        // confirms on the authenticator after that.
-        await first.page.getByTestId('passkey-sign-in').click()
+        const autofillOptions = first.page.waitForResponse(
+            (response) => response.url().endsWith('/api/auth/passkey/options') && response.ok(),
+        )
+        await first.page.locator('#login-identifier').click()
+        await autofillOptions
+        // The autofill request starts right after its options (and the WebAuthn library, from the
+        // browser cache); nothing on the page says when, hence a short fixed wait.
+        await first.page.waitForTimeout(500)
+        await expect(first.page).toHaveURL(/\/login/)
         await authenticator.present(true)
+        await first.page.getByTestId('passkey-sign-in').click()
         await expect(first.page).toHaveURL(/\/account/)
         await expect(first.page.getByText(account.email)).toBeVisible()
     } finally {
