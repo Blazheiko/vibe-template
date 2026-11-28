@@ -201,6 +201,18 @@ describe('installPreloadRecovery', () => {
         expect(deps.navigate).toHaveBeenCalledExactlyOnceWith('/account')
     })
 
+    it('does not reload to the old target once the user navigated elsewhere', async () => {
+        const { router, deps, env, fireOnline } = harness(() => Promise.reject(chunkError()), {
+            onLine: false,
+        })
+        await router.push('/account').catch(() => undefined)
+        await router.push('/')
+        expect(chunkLoadNotice.value).toBeNull()
+        env.onLine = true
+        fireOnline()
+        expect(deps.navigate).not.toHaveBeenCalled()
+    })
+
     it('never reloads by itself without sessionStorage', async () => {
         const { router, deps } = harness(() => Promise.reject(chunkError()), { storage: null })
         await router.push('/')

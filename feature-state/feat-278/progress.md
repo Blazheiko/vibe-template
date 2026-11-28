@@ -17,7 +17,8 @@ All tasks T1–T7 done; ready for review.
 - **T4.** `AvatarEditorModal` through `defineAsyncComponent`; `vue-advanced-cropper` loads when the editor first opens.
 - **T5.** `src/utils/preload-recovery.ts`, `ChunkLoadNotice.vue`, keys `app.chunkLoad.*` (en/uk/pl), wired in `main.ts`; the existing `router.onError` → Sentry skips chunk errors, the recovery reports only when it gives up.
     - Deviation from the plan, on purpose: the `vite:preloadError` listener calls `preventDefault()` **only when it reloads itself**. Vite's preload helper resolves a prevented import with `undefined` instead of rejecting it, so preventing it during a navigation would hand the router an empty component instead of the error `router.onError` recovers from.
-    - Found while testing: Vite fetches a lazy chunk twice (the `modulepreload` and the `import()`); a failed `modulepreload` alone is ignored, the import retries the URL.
+    - Self-review fix: the offline retry reloads only while its notice stands, so a user who navigated elsewhere meanwhile is not taken back to the old target.
+  - Found while testing: Vite fetches a lazy chunk twice (the `modulepreload` and the `import()`); a failed `modulepreload` alone is ignored, the import retries the URL.
 - **T6.** `e2e-security/stale-chunk.spec.ts` (404, aborted request while online, a chunk that keeps failing, offline); `scripts/stale-build-check.sh` + `playwright.stale-build.config.ts` + `e2e-stale-build/stale-build.spec.ts` (`pnpm --filter frontend test:e2e:stale-build`): real builds A and B, backend restart on B, active SW. Decision recorded in the docs: `skipWaiting()` stays.
 - **T7.** Budget lowered to 293 000 B; docs `documentation/frontend/index.md` (+ en): lazy pages and recovery, `skipWaiting()`, the budget and the stale-build check.
 
@@ -32,7 +33,7 @@ All tasks T1–T7 done; ready for review.
 
 ## Evidence of Completion
 
-- `make check`: exit 0. `check-bundle-graph: 766 modules, no schema and no validator library.`; `check-cold-start-budget: /login max 280.1 KB (uk), budget 286.1 KB.`; tests: backend 273 files / 3989 passed, frontend 85 files / 1048 passed, landing 6 / 103, api-playground 11 / 115.
+- `make check`: exit 0. `check-bundle-graph: 766 modules, no schema and no validator library.`; `check-cold-start-budget: /login max 280.1 KB (uk), budget 286.1 KB.`; tests: backend 273 files / 3989 passed, frontend 85 files / 1049 passed, landing 6 / 103, api-playground 11 / 115.
 - `pnpm --filter frontend test:e2e`: 134 passed.
 - `test:e2e:security` (prod build, local PostgreSQL + Redis): `stale-chunk.spec.ts` 4 passed (3 runs in a row green), `service-worker.spec.ts` passed. `csrf.spec.ts:124` ("session lost in another tab") fails — **pre-existing**: it fails 3 of 3 on a clean worktree of `main` `cf70b43d` too (the suite is not in CI). Not touched here.
 - `pnpm --filter frontend test:e2e:stale-build`: 1 passed — a tab of build A clicks About after the backend restarted on build B: one reload, B's page (marker), A's caches gone (B's SW took over), no notice, no second reload.

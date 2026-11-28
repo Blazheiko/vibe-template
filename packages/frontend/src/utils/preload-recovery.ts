@@ -123,9 +123,12 @@ export function installPreloadRecovery(
             beforeReload()
             deps.navigate(target)
         } else if (outcome === 'wait-online') {
-            chunkLoadNotice.value = { kind: 'offline', target }
+            const notice: ChunkLoadNotice = { kind: 'offline', target }
+            chunkLoadNotice.value = notice
             deps.onceOnline(() => {
-                deps.navigate(target)
+                // Only while this notice stands: a later successful navigation cleared it, and
+                // the user should not be taken back to a page they left.
+                if (chunkLoadNotice.value === notice) deps.navigate(target)
             })
         } else {
             chunkLoadNotice.value = { kind: 'failed', target }
