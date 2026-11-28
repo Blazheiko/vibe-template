@@ -623,7 +623,12 @@ const logout = async () => {
     background: none;
     border: none;
     cursor: pointer;
-    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    /* feat-279: not `all`: a transition of the inherited `visibility` kept an item hidden for a
+       moment after the menu opened, and Tab skipped it. */
+    transition:
+        background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     color: var(--text-primary);
     border-radius: 6px;
     margin: 1px 6px;
