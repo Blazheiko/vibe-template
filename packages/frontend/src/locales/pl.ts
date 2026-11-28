@@ -16,6 +16,11 @@ const pl: typeof en = {
 
     app: {
         loading: 'Ładowanie...',
+        chunkLoad: {
+            offline: 'Brak połączenia z siecią. Strona otworzy się po przywróceniu połączenia.',
+            failed: 'Nie udało się załadować strony. Odśwież ją, aby spróbować ponownie.',
+            reload: 'Odśwież stronę',
+        },
     },
 
     emailVerification: {

@@ -40,6 +40,7 @@
         "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,vue,json,md,css}\"",
         "typecheck": "pnpm -r typecheck",
         "check:bundle-graph": "pnpm --filter frontend check:bundle-graph",
+        "check:cold-start": "pnpm --filter frontend check:cold-start",
         "test": "pnpm -r test && node --test 'scripts/eslint-rules/*.test.mjs' 'scripts/*.test.mjs'",
         "clean": "pnpm -r clean && rm -rf node_modules"
     },

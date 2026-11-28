@@ -17,6 +17,11 @@ import { sentryService as sentry } from '@/utils/sentry-service'
 import { initializePwaInstallTracking } from '@/utils/pwa-install'
 import { initLocaleStandalone } from '@/composables/useLocale'
 import { isNavigationFailure } from 'vue-router'
+import {
+    browserRecoveryDeps,
+    installPreloadRecovery,
+    isChunkLoadError,
+} from '@/utils/preload-recovery'
 
 initializePwaInstallTracking()
 
@@ -30,8 +35,16 @@ async function bootstrap() {
     app.use(createPinia())
     app.use(router)
     app.use(i18n)
+    // feat-278: a page chunk that fails to load is recovered (one reload to the target) and
+    // reported by preload-recovery itself only when the recovery gives up.
+    installPreloadRecovery(
+        router,
+        browserRecoveryDeps(BUILD_TIMESTAMP, (error, path) => {
+            sentry.captureException(error, { extra: { targetRoute: path } })
+        }),
+    )
     router.onError((error, to) => {
-        if (isNavigationFailure(error)) {
+        if (isNavigationFailure(error) || isChunkLoadError(error)) {
             return
         }
 
