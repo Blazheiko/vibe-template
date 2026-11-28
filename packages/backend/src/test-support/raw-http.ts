@@ -20,6 +20,8 @@ export interface RawResponse {
     statusLine: string
     headers: Map<string, string>
     body: string
+    /** The body as sent, for byte-exact checks (UTF-8, binary). */
+    bodyBytes: Buffer
 }
 
 // Parses one full HTTP/1.1 response framed by Content-Length.
@@ -35,7 +37,8 @@ const tryParse = (data: Buffer): RawResponse | null => {
     const length = Number(headers.get('content-length') ?? '0')
     const body = data.subarray(headerEnd + 4)
     if (body.byteLength < length) return null
-    return { statusLine, headers, body: body.subarray(0, length).toString() }
+    const bodyBytes = body.subarray(0, length)
+    return { statusLine, headers, body: bodyBytes.toString(), bodyBytes }
 }
 
 /**
@@ -74,6 +77,82 @@ export const exchange = async (
         socket?.destroy()
     }
 }
+
+export interface ClosedExchange {
+    /** The first response in what arrived, or null when none did. */
+    response: RawResponse | null
+    /** Every byte the server sent before the connection ended. */
+    bytes: Buffer
+    /** The server ended the connection (FIN or reset) before the timeout. */
+    closedByServer: boolean
+}
+
+/**
+ * Writes `data` after `delayMs`, unless the socket has closed by then: a test that
+ * splits a request into packets must not write to a socket the server already ended.
+ */
+export const writeLater = (socket: Socket, data: string | Buffer, delayMs: number): void => {
+    const timer = setTimeout(() => {
+        if (!socket.destroyed) socket.write(data)
+    }, delayMs)
+    socket.once('close', () => {
+        clearTimeout(timer)
+    })
+}
+
+/**
+ * Like `exchange`, but waits for the server to end the connection instead of
+ * resolving on the first response, so a test can tell "answered and closed" from
+ * "answered". `exchange` destroys the socket itself and cannot show who closed it.
+ * A response without Content-Length (uWS's own 400) is read as one with an empty
+ * body; the bytes after its headers are still in `bytes`. A connection that never
+ * opened (ECONNREFUSED, the server gone) rejects instead of passing for a close.
+ */
+export const exchangeUntilClose = (
+    port: number,
+    write: (socket: Socket) => void,
+    timeoutMs = 2_000,
+): Promise<ClosedExchange> =>
+    new Promise<ClosedExchange>((resolve, reject) => {
+        const chunks: Buffer[] = []
+        let done = false
+        let connected = false
+        const socket = connect(port, '127.0.0.1', () => {
+            connected = true
+            write(socket)
+        })
+        const finish = (closedByServer: boolean): void => {
+            if (done) return
+            done = true
+            clearTimeout(timer)
+            socket.destroy()
+            const bytes = Buffer.concat(chunks)
+            resolve({ response: tryParse(bytes), bytes, closedByServer })
+        }
+        const timer = setTimeout(() => {
+            finish(false)
+        }, timeoutMs)
+        socket.on('data', (chunk: Buffer) => {
+            chunks.push(chunk)
+        })
+        socket.on('end', () => {
+            finish(true)
+        })
+        socket.on('error', (err) => {
+            if (connected) {
+                finish(true)
+                return
+            }
+            if (done) return
+            done = true
+            clearTimeout(timer)
+            socket.destroy()
+            reject(err)
+        })
+        socket.on('close', () => {
+            finish(true)
+        })
+    })
 
 /** A multipart/form-data body with one file field. */
 export const multipartBody = (

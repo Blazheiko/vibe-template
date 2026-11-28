@@ -15,9 +15,8 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Dependencies first, for the layer cache. pnpm.patchedDependencies (patches/) is checked on install.
+# Dependencies first, for the layer cache.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY patches ./patches
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/landing/package.json ./packages/landing/
 RUN pnpm install --frozen-lockfile --filter landing...

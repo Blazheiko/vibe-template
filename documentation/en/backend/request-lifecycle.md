@@ -24,6 +24,27 @@ The `SIGINT`/`SIGHUP`/`SIGTERM` signals trigger `stopGracefully`: `stopServer` (
 
 `setCorsHeader` always writes `Vary: Origin`, and `Access-Control-Allow-*` only if `Origin` is in `corsConfig.allowedOrigins`.
 
+uWS also passes `OPTIONS *` (asterisk-form, RFC 9112 §3.2.4) to `any("/*")`, with `getUrl()` = `*`. It is not a path under `/<pathPrefix>/`, so the L1 rate limit does not count it, like any other `OPTIONS` outside the API: with `corsConfig.enabled` it gets `200` (with `Access-Control-Allow-*` only for an allowed `Origin`), without it `404`.
+
+## What uWS refuses by itself
+
+Some requests are refused by `uWebSockets.js` (`v20.72.0`, core `v20.81.0`) itself: it answers `400 Bad Request` with `Connection: close` and its own HTML body without `Content-Length`, then closes the connection. Such an answer has none of our JSON error body, CORS headers (even for an allowed `Origin` with CORS on) or security headers; the tests pin this format. There are two classes of refusal.
+
+**Before any handler** — none of our code runs:
+
+- a request target with a byte outside visible ASCII (raw UTF-8 in the path; an encoded `%D0%BF` goes through as usual);
+- a `Host` with `/`, `?` or `#`;
+- more than about 100 headers, or a control character in a header value ([feat-215 notes](https://github.com/Blazheiko/vibe-template/blob/main/docs/security/security-review-2026-11-12-follow-ups.md)). Bytes above `0x7F` at the **ends** of a value are trimmed by uWS like spaces, not refused ([header-values.live.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/header-values.live.spec.ts)).
+
+**After the headers** — the route handler has already been called, and uWS finds the error after our microtasks (middleware and the controller) have run. So a check of the abort flag after reading the body does not help here: `onAborted` comes later.
+
+- `Content-Length` of 2^56 or more: uWS calls the handler, then, before any body, aborts the request (`onAborted`) and answers `400`. For methods with a body (`POST`, `PUT`, `PATCH`) the controller does not run: such a `Content-Length` is over every body limit. `GET` and `DELETE` do not read a body, so their controller **runs** (with its side effects), and the client gets uWS's `400`.
+- A trailer with a bare LF after the last chunk: trailers are parsed **after** the body, so `onData` has already delivered the last piece and the controller runs however the packets are split. The client gets uWS's `400`, or, when `0\r\n` came on its own before the trailer, even our answer, and only then the close.
+
+The effect is the same as a client that drops the connection mid-request: the side effects of an ordinary request, and a lost answer. `setHttpHandler` then writes no answer: before `sendResponse` it sees `abortSignal.aborted` and returns, so there is no error in the log either. When our answer went out before the error (the `0\r\n` case above), the client gets it, and the close comes after. It opens no new vector: the same client could send a valid request.
+
+The library behaviour is pinned by [uws-native.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-native.transport.spec.ts), its effect on our routes by [uws-parser.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-parser.transport.spec.ts). The test client that shows who closed the connection is `exchangeUntilClose` in [raw-http.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/test-support/raw-http.ts).
+
 ## Handling an HTTP request (setHttpHandler)
 
 ```mermaid

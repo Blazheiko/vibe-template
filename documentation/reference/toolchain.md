@@ -22,9 +22,11 @@
 `engines.node` дозволяє будь-яку `24.x` від `24.22.2`, а `.nvmrc` вказує саме `24.22.2`: CI ставить цю версію, тож мінімальна дозволена версія і версія CI збігаються. [`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) ставить ту саму версію (`ARG NODE_VERSION`) в обох етапах і падає, якщо `node -v` інша. Оновлюйте `.nvmrc`, `engines` і `NODE_VERSION` разом.
 :::
 
-## Патч uWebSockets.js
+## uWebSockets.js
 
-`uWebSockets.js` `v20.71.0` має зламану ESM-точку входу: `ESM_wrapper.mjs` імпортує `./index.js`, якого немає в пакеті ([uNetworking/uWebSockets.js#1356](https://github.com/uNetworking/uWebSockets.js/issues/1356)). Виправлення — однорядковий патч [`patches/uWebSockets.js@20.71.0.patch`](https://github.com/Blazheiko/vibe-template/blob/main/patches/uWebSockets.js@20.71.0.patch), підключений через `pnpm.patchedDependencies` у кореневому `package.json`. З наступним релізом uWS патч і запис у `patchedDependencies` прибираються.
+`uWebSockets.js` ставиться з GitHub за тегом (`github:uNetworking/uWebSockets.js#v20.72.0` у `packages/backend/package.json`); у реєстрі npm його немає. Номер релізу обгортки і версія C++-ядра uWebSockets різні: `v20.72.0` містить ядро `v20.81.0`. Пакет несе готові бінарні модулі під кілька ABI Node (`uws_<platform>_<arch>_<abi>.node`), Node 24 — це ABI 137. Патчів немає: ESM-точку входу, яку виправляв патч для `v20.71.0` ([#1356](https://github.com/uNetworking/uWebSockets.js/issues/1356)), полагоджено в `v20.72.0`.
+
+Після оновлення пакета очистіть кеш vitest: `pnpm --filter backend exec vitest --clearCache`. Його кеш модулів (`node_modules/.vitest-cache`) пам'ятає шлях до старої версії, а pnpm лишає її в `node_modules/.pnpm`, тож локальні тести можуть пройти на старому бінарнику. CI цей кеш не зберігає.
 
 ## `pnpm.overrides`
 

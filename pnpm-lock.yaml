@@ -17,11 +17,6 @@ overrides:
   hono@<4.13.16: ^4.13.16
   '@hono/node-server@>=2.0.0 <2.1.6': ^2.1.6
 
-patchedDependencies:
-  uWebSockets.js@20.71.0:
-    hash: cs3wtun2bl2pzxrc3j42sgtxbi
-    path: patches/uWebSockets.js@20.71.0.patch
-
 importers:
 
   .:
@@ -217,8 +212,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       uWebSockets.js:
-        specifier: github:uNetworking/uWebSockets.js#v20.71.0
-        version: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136(patch_hash=cs3wtun2bl2pzxrc3j42sgtxbi)
+        specifier: github:uNetworking/uWebSockets.js#v20.72.0
+        version: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/c452ac24524cac8eedc6c08b3025038c6e349712
       web-push:
         specifier: 3.6.7
         version: 3.6.7
@@ -4761,9 +4756,9 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136:
-    resolution: {tarball: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136}
-    version: 20.71.0
+  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/c452ac24524cac8eedc6c08b3025038c6e349712:
+    resolution: {tarball: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/c452ac24524cac8eedc6c08b3025038c6e349712}
+    version: 20.72.0
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
@@ -9593,7 +9588,7 @@ snapshots:
 
   typescript@6.0.3: {}
 
-  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136(patch_hash=cs3wtun2bl2pzxrc3j42sgtxbi): {}
+  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/c452ac24524cac8eedc6c08b3025038c6e349712: {}
 
   ufo@1.6.4: {}
 
