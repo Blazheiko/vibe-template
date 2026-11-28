@@ -24,6 +24,25 @@
 
 `setCorsHeader` завжди пише `Vary: Origin`, а `Access-Control-Allow-*` — лише якщо `Origin` є в `corsConfig.allowedOrigins`.
 
+`OPTIONS *` (asterisk-form, RFC 9112 §3.2.4) uWS теж передає в `any("/*")`, з `getUrl()` = `*`. Це не шлях під `/<pathPrefix>/`, тому L1 rate limit його не рахує, як і будь-який інший `OPTIONS` поза API: з `corsConfig.enabled` — `200` (з `Access-Control-Allow-*` лише для дозволеного `Origin`), без нього — `404`.
+
+## Що uWS відхиляє сам
+
+Частину запитів `uWebSockets.js` (`v20.72.0`, ядро `v20.81.0`) відхиляє сам: відповідає `400 Bad Request` з `Connection: close` і власним HTML-тілом без `Content-Length`, а потім закриває з'єднання. Нашого JSON-тіла помилки, CORS- і security-заголовків у такій відповіді немає. Відмови бувають двох класів.
+
+**До обробника** — наш код не виконується зовсім:
+
+- request target з байтом поза видимим ASCII (сирий UTF-8 у шляху; закодований `%D0%BF` проходить як звичайно);
+- `Host` з `/`, `?` або `#`;
+- понад ~100 заголовків або керівний символ у значенні заголовка ([нотатки feat-215](https://github.com/Blazheiko/vibe-template/blob/main/docs/security/security-review-2026-11-12-follow-ups.md)). Байти понад `0x7F` на **краях** значення uWS обрізає, як пробіли, а не відхиляє ([header-values.live.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/header-values.live.spec.ts)).
+
+**Під час читання тіла** — обробник маршруту вже викликано:
+
+- `Content-Length` ≥ 2^56: uWS викликає обробник, а потім, ще до тіла, перериває запит (`onAborted`) і відповідає `400`. Контролер не запускається, бо такий `Content-Length` більший за будь-який ліміт тіла.
+- Трейлер після останнього chunk з голим LF: трейлери розбираються **після** тіла, тож `onData` уже віддав останній шматок, і контролер міг відпрацювати (з побічними ефектами), але клієнт отримає `400` від uWS, а не відповідь контролера. Запис відповіді в уже закрите з'єднання проходить тихо, без помилки в лозі.
+
+Поведінку бібліотеки закріплює [uws-native.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-native.transport.spec.ts), її наслідки для наших маршрутів — [uws-parser.transport.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/uws-parser.transport.spec.ts). Тест-клієнт, який перевіряє, хто закрив з'єднання, — `exchangeUntilClose` з `test-support/raw-http.ts`.
+
 ## Обробка HTTP-запиту (setHttpHandler)
 
 ```mermaid

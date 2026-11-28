@@ -12,7 +12,7 @@ Based on the dependencies in [packages/backend/package.json](https://github.com/
 
 | Purpose               | Dependencies                                                  |
 | --------------------- | ------------------------------------------------------------- |
-| HTTP/WebSocket server | `uWebSockets.js` (`v20.71.0` from GitHub)                     |
+| HTTP/WebSocket server | `uWebSockets.js` (`v20.72.0` from GitHub)                     |
 | DB                    | `drizzle-orm` / `drizzle-kit` `1.0.0-rc.5`, `pg` (PostgreSQL) |
 | Validation            | `@arktype/type`                                               |
 | Redis                 | `ioredis`                                                     |

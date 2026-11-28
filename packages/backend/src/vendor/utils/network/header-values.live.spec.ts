@@ -15,7 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 // What it showed: uWS trims bytes above 0x7F at both ends of a value as it trims spaces
 // (`café` arrives as `caf`, `écafe` as `cafe`), so such a value is valid by the time the
 // check sees it. A byte above 0x7E inside the value arrives and is refused. Either way no
-// such byte reaches the application. The edge trimming is uWS's (20.71.0); this pins it, so
+// such byte reaches the application. The edge trimming is uWS's (20.71.0, unchanged in 20.72.0); this pins it, so
 // an upgrade that changes it is noticed.
 
 const debug = vi.hoisted(() => vi.fn())
