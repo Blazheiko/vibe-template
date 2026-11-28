@@ -18,7 +18,7 @@ All tasks T1–T7 done; ready for review.
 - **T5.** `src/utils/preload-recovery.ts`, `ChunkLoadNotice.vue`, keys `app.chunkLoad.*` (en/uk/pl), wired in `main.ts`; the existing `router.onError` → Sentry skips chunk errors, the recovery reports only when it gives up.
     - Deviation from the plan, on purpose: the `vite:preloadError` listener calls `preventDefault()` **only when it reloads itself**. Vite's preload helper resolves a prevented import with `undefined` instead of rejecting it, so preventing it during a navigation would hand the router an empty component instead of the error `router.onError` recovers from.
     - Self-review fix: the offline retry reloads only while its notice stands, so a user who navigated elsewhere meanwhile is not taken back to the old target.
-  - Found while testing: Vite fetches a lazy chunk twice (the `modulepreload` and the `import()`); a failed `modulepreload` alone is ignored, the import retries the URL.
+    - Found while testing: Vite fetches a lazy chunk twice (the `modulepreload` and the `import()`); a failed `modulepreload` alone is ignored, the import retries the URL.
 - **T6.** `e2e-security/stale-chunk.spec.ts` (404, aborted request while online, a chunk that keeps failing, offline); `scripts/stale-build-check.sh` + `playwright.stale-build.config.ts` + `e2e-stale-build/stale-build.spec.ts` (`pnpm --filter frontend test:e2e:stale-build`): real builds A and B, backend restart on B, active SW. Decision recorded in the docs: `skipWaiting()` stays.
 - **T7.** Budget lowered to 293 000 B; docs `documentation/frontend/index.md` (+ en): lazy pages and recovery, `skipWaiting()`, the budget and the stale-build check.
 
