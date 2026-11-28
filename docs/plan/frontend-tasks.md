@@ -149,36 +149,36 @@
 
 ### T8 · Старт фічі
 
-- [ ] Старт фічі.
+- [x] Старт фічі.
 
 ### T9 · Переклади й доступні назви
 
-- [ ] `src/components/MenuButton.vue`:
+- [x] `src/components/MenuButton.vue`:
     - гамбургер — `aria-label` з i18n (`menu.open`/`menu.close` залежно від стану), `aria-expanded`, `aria-controls` на id панелі (`useId()`), `aria-haspopup="true"`;
     - `Navigation`, `Logging out...` та інші англійські пункти → i18n.
-- [ ] `src/components/AppHeader.vue`:
+- [x] `src/components/AppHeader.vue`:
     - кнопка Back — `aria-label` з i18n, видимий `<span>` для десктопу — той самий ключ;
     - статуси WebSocket (`Connected`, `Connecting...`, `Disconnected`, `Unknown`), `Support`, `WebSocket Status: …` → i18n.
-- [ ] `src/components/PwaInstallButton.vue`: `Install App` → i18n.
-- [ ] Ключі в `en.ts`, `uk.ts`, `pl.ts`; `pnpm typecheck` зелений; `e2e/mock/locale.spec.ts` зелений. Англійські тексти в `en.ts` лишаються такими самими, як зараз у коді, тож наявні селектори e2e (`getByRole('button', { name: 'Sign In' })` тощо) не змінюються.
+- [x] `src/components/PwaInstallButton.vue`: `Install App` → i18n.
+- [x] Ключі в `en.ts`, `uk.ts`, `pl.ts`; `pnpm typecheck` зелений; `e2e/mock/locale.spec.ts` зелений. Англійські тексти в `en.ts` лишаються такими самими, як зараз у коді, тож наявні селектори e2e (`getByRole('button', { name: 'Sign In' })` тощо) не змінюються.
 
 ### T10 · `Escape` і повернення фокуса
 
-- [ ] `MenuButton.vue`: `Escape` при відкритому меню закриває його й повертає фокус на гамбургер; закриття кліком поза меню фокус не краде.
-- [ ] Відкриття меню переносить фокус на перший пункт.
+- [x] `MenuButton.vue`: `Escape` при відкритому меню закриває його й повертає фокус на гамбургер; закриття кліком поза меню фокус не краде.
+- [x] Відкриття меню переносить фокус на перший пункт.
 
 ### T11 · Згорнуті секції поза порядком табуляції
 
-- [ ] `.group-items` без `.expanded` — атрибут `inert` (`:inert="openGroup !== '…'"`); анімація висоти лишається. Кнопка-заголовок секції — `aria-expanded` і `aria-controls`.
+- [x] `.group-items` без `.expanded` — атрибут `inert` (`:inert="openGroup !== '…'"`); анімація висоти лишається. Кнопка-заголовок секції — `aria-expanded` і `aria-controls`.
 
 ### T12 · Тести
 
-- [ ] `e2e/mock/header-keyboard.spec.ts`:
+- [x] `e2e/mock/header-keyboard.spec.ts`:
     - доступні назви через `getByRole('button', { name })` на мобільному viewport;
     - `Tab` з відкритого меню не потрапляє в згорнуту секцію; розгортання секції робить її кнопки досяжними;
     - `Escape` закриває меню, фокус на гамбургері;
     - з мовою `uk` назви кнопок і статус WebSocket — українською.
-- [ ] Unit (якщо логіка винесена в composable) на перемикання `openGroup`.
+- [x] Unit (якщо логіка винесена в composable) на перемикання `openGroup`.
 
 ---
 

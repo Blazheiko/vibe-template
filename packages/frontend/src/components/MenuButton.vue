@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import '@khmyznikov/pwa-install'
-import { ref, onMounted, onUnmounted } from 'vue'
+import { nextTick, ref, onMounted, onUnmounted, useId } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useStateStore } from '@/stores/state'
@@ -36,13 +36,36 @@ const { pwaInstall, shouldMountPwaInstall, isInstallAvailable, pwaStyles, instal
         closeMenu()
     })
 
+// feat-279: ids for aria-controls, the hamburger to return the focus to.
+const menuId = useId()
+const groupIds = {
+    navigation: useId(),
+    account: useId(),
+    legal: useId(),
+}
+const menuButton = ref<HTMLButtonElement | null>(null)
+const dropdown = ref<HTMLElement | null>(null)
+
 // Управление меню
 const toggleMenu = () => {
     isMenuOpen.value = !isMenuOpen.value
+    if (isMenuOpen.value) {
+        // The first item of the opened menu takes the focus.
+        void nextTick(() => {
+            dropdown.value?.querySelector<HTMLElement>('button:not([disabled])')?.focus()
+        })
+    }
 }
 
 const closeMenu = () => {
     isMenuOpen.value = false
+}
+
+// Escape closes the menu and returns the focus to the hamburger.
+const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || !isMenuOpen.value) return
+    closeMenu()
+    menuButton.value?.focus()
 }
 
 // Обработчик клика вне меню
@@ -56,10 +79,12 @@ const handleClickOutside = (event: MouseEvent) => {
 // Добавляем обработчики событий
 onMounted(() => {
     window.addEventListener('click', handleClickOutside)
+    window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
     window.removeEventListener('click', handleClickOutside)
+    window.removeEventListener('keydown', handleKeydown)
 })
 
 // Переход в аккаунт
@@ -106,9 +131,19 @@ const logout = async () => {
             :styles="pwaStyles"
         ></pwa-install>
 
-        <button type="button" class="menu-button" @click.stop="toggleMenu">
+        <button
+            ref="menuButton"
+            type="button"
+            class="menu-button"
+            :aria-label="isMenuOpen ? t('menu.close') : t('menu.open')"
+            :aria-expanded="isMenuOpen"
+            :aria-controls="menuId"
+            aria-haspopup="true"
+            @click.stop="toggleMenu"
+        >
             <svg
                 class="menu-icon"
+                aria-hidden="true"
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 width="14"
@@ -119,7 +154,7 @@ const logout = async () => {
             </svg>
         </button>
 
-        <div class="dropdown-menu" :class="{ show: isMenuOpen }">
+        <div :id="menuId" ref="dropdown" class="dropdown-menu" :class="{ show: isMenuOpen }">
             <!-- Install App — всегда вверху если доступен -->
             <PwaInstallButton v-if="isInstallAvailable" @install="installApp" />
 
@@ -127,7 +162,13 @@ const logout = async () => {
             <div v-if="isInstallAvailable" class="menu-divider"></div>
 
             <!-- Группа: Navigation -->
-            <button type="button" class="group-header" @click.stop="toggleGroup('navigation')">
+            <button
+                type="button"
+                class="group-header"
+                :aria-expanded="openGroup === 'navigation'"
+                :aria-controls="groupIds.navigation"
+                @click.stop="toggleGroup('navigation')"
+            >
                 <div class="group-header-left">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -140,7 +181,7 @@ const logout = async () => {
                             d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"
                         />
                     </svg>
-                    <span>Navigation</span>
+                    <span>{{ t('menu.navigation') }}</span>
                 </div>
                 <svg
                     class="chevron"
@@ -155,7 +196,12 @@ const logout = async () => {
                 </svg>
             </button>
 
-            <div class="group-items" :class="{ expanded: openGroup === 'navigation' }">
+            <div
+                :id="groupIds.navigation"
+                class="group-items"
+                :class="{ expanded: openGroup === 'navigation' }"
+                :inert="openGroup !== 'navigation'"
+            >
                 <div class="group-items-inner">
                     <button type="button" class="menu-item" @click="goTo('/support')">
                         <svg
@@ -169,7 +215,7 @@ const logout = async () => {
                                 d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2Zm1 17h-2v-2h2Zm2.07-7.75-.9.92A3.49 3.49 0 0 0 13 15h-2v-.5a4 4 0 0 1 1.17-2.83l1.24-1.26A1.96 1.96 0 0 0 14 9a2 2 0 0 0-4 0H8a4 4 0 0 1 8 0 3.2 3.2 0 0 1-.93 2.25Z"
                             />
                         </svg>
-                        Support
+                        {{ t('menu.support') }}
                     </button>
                     <button type="button" class="menu-item" @click="goTo('/account')">
                         <svg
@@ -183,7 +229,7 @@ const logout = async () => {
                                 d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4Z"
                             />
                         </svg>
-                        Account
+                        {{ t('menu.account') }}
                     </button>
                     <button type="button" class="menu-item" @click="goTo('/about')">
                         <svg
@@ -197,7 +243,7 @@ const logout = async () => {
                                 d="M11 17h2v-6h-2v6Zm1-14a9 9 0 1 0 9 9 9.01 9.01 0 0 0-9-9Zm0 16a7 7 0 1 1 7-7 7.01 7.01 0 0 1-7 7Zm-1-10h2V7h-2v2Z"
                             />
                         </svg>
-                        About
+                        {{ t('menu.about') }}
                     </button>
                 </div>
             </div>
@@ -205,7 +251,13 @@ const logout = async () => {
             <div class="menu-divider"></div>
 
             <!-- Группа: Account -->
-            <button type="button" class="group-header" @click.stop="toggleGroup('account')">
+            <button
+                type="button"
+                class="group-header"
+                :aria-expanded="openGroup === 'account'"
+                :aria-controls="groupIds.account"
+                @click.stop="toggleGroup('account')"
+            >
                 <div class="group-header-left">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -218,7 +270,7 @@ const logout = async () => {
                             d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
                         />
                     </svg>
-                    <span>Account</span>
+                    <span>{{ t('menu.accountGroup') }}</span>
                 </div>
                 <svg
                     class="chevron"
@@ -233,7 +285,12 @@ const logout = async () => {
                 </svg>
             </button>
 
-            <div class="group-items" :class="{ expanded: openGroup === 'account' }">
+            <div
+                :id="groupIds.account"
+                class="group-items"
+                :class="{ expanded: openGroup === 'account' }"
+                :inert="openGroup !== 'account'"
+            >
                 <div class="group-items-inner">
                     <button type="button" class="menu-item" @click="goToAccount">
                         <svg
@@ -247,7 +304,7 @@ const logout = async () => {
                                 d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
                             />
                         </svg>
-                        My Account
+                        {{ t('menu.myAccount') }}
                     </button>
                     <button type="button" class="menu-item" @click="toggleTheme">
                         <svg
@@ -274,7 +331,7 @@ const logout = async () => {
                                 d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.03 0-1.41l-1.06-1.06zm1.06-10.96c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"
                             />
                         </svg>
-                        {{ stateStore.darkMode ? 'Light Theme' : 'Dark Theme' }}
+                        {{ stateStore.darkMode ? t('menu.lightTheme') : t('menu.darkTheme') }}
                     </button>
                 </div>
             </div>
@@ -282,7 +339,13 @@ const logout = async () => {
             <div class="menu-divider"></div>
 
             <!-- Группа: Legal & Support -->
-            <button type="button" class="group-header" @click.stop="toggleGroup('legal')">
+            <button
+                type="button"
+                class="group-header"
+                :aria-expanded="openGroup === 'legal'"
+                :aria-controls="groupIds.legal"
+                @click.stop="toggleGroup('legal')"
+            >
                 <div class="group-header-left">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -295,7 +358,7 @@ const logout = async () => {
                             d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 4l6 2.67V11c0 3.93-2.63 7.63-6 8.93-3.37-1.3-6-5-6-8.93V7.67L12 5zm-1 4v2H9v2h2v2h2v-2h2v-2h-2V9h-2z"
                         />
                     </svg>
-                    <span>Legal &amp; Support</span>
+                    <span>{{ t('menu.legal') }}</span>
                 </div>
                 <svg
                     class="chevron"
@@ -310,7 +373,12 @@ const logout = async () => {
                 </svg>
             </button>
 
-            <div class="group-items" :class="{ expanded: openGroup === 'legal' }">
+            <div
+                :id="groupIds.legal"
+                class="group-items"
+                :class="{ expanded: openGroup === 'legal' }"
+                :inert="openGroup !== 'legal'"
+            >
                 <div class="group-items-inner">
                     <button type="button" class="menu-item" @click="goTo('/support')">
                         <svg
@@ -324,7 +392,7 @@ const logout = async () => {
                                 d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z"
                             />
                         </svg>
-                        Support
+                        {{ t('menu.support') }}
                     </button>
                     <button type="button" class="menu-item" @click="goTo('/ai-policy')">
                         <svg
@@ -338,7 +406,7 @@ const logout = async () => {
                                 d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 10 4a2 2 0 0 1 2-2zm-2 9a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
                             />
                         </svg>
-                        AI Policy
+                        {{ t('menu.aiPolicy') }}
                     </button>
                     <button type="button" class="menu-item" @click="goTo('/privacy-policy')">
                         <svg
@@ -352,7 +420,7 @@ const logout = async () => {
                                 d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 4l6 2.67V11c0 3.93-2.63 7.63-6 8.93-3.37-1.3-6-5-6-8.93V7.67L12 5zm-1 4v2H9v2h2v2h2v-2h2v-2h-2V9h-2z"
                             />
                         </svg>
-                        Privacy Policy
+                        {{ t('menu.privacyPolicy') }}
                     </button>
                     <button type="button" class="menu-item" @click="goTo('/terms')">
                         <svg
@@ -366,7 +434,7 @@ const logout = async () => {
                                 d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"
                             />
                         </svg>
-                        Terms &amp; Conditions
+                        {{ t('menu.terms') }}
                     </button>
                     <button type="button" class="menu-item" @click="goTo('/cookies')">
                         <svg
@@ -380,7 +448,7 @@ const logout = async () => {
                                 d="M21.95 10.99c-1.19.03-2.26-.79-2.38-1.97-.09-.88.37-1.67 1.08-2.1-.63-1.07-1.48-1.99-2.49-2.72-.56.81-1.61 1.24-2.67.91-1.14-.36-1.81-1.51-1.6-2.67-1.09-.16-2.2-.13-3.27.09.16 1.16-.51 2.31-1.65 2.67-1.06.33-2.11-.1-2.67-.91C5.3 5.52 4.45 6.44 3.82 7.51c.71.43 1.17 1.22 1.08 2.1-.12 1.18-1.19 2-2.38 1.97-.06.45-.09.9-.09 1.36 0 .48.03.94.09 1.39 1.19-.03 2.26.79 2.38 1.97.09.88-.37 1.67-1.08 2.1.63 1.07 1.48 1.99 2.49 2.72.56-.81 1.61-1.24 2.67-.91 1.14.36 1.81 1.51 1.6 2.67 1.08.16 2.2.13 3.27-.09-.16-1.16.51-2.31 1.65-2.67 1.06-.33 2.11.1 2.67.91 1.01-.73 1.86-1.65 2.49-2.72-.71-.43-1.17-1.22-1.08-2.1.12-1.18 1.19-2 2.38-1.97.06-.45.09-.91.09-1.39 0-.46-.03-.91-.09-1.36zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"
                             />
                         </svg>
-                        Cookies Policy
+                        {{ t('menu.cookies') }}
                     </button>
                 </div>
             </div>
@@ -405,8 +473,8 @@ const logout = async () => {
                         d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"
                     />
                 </svg>
-                <span v-if="isLoggingOut">Logging out...</span>
-                <span v-else>Logout</span>
+                <span v-if="isLoggingOut">{{ t('menu.loggingOut') }}</span>
+                <span v-else>{{ t('menu.logout') }}</span>
             </button>
         </div>
     </div>
@@ -469,6 +537,11 @@ const logout = async () => {
     opacity: 1;
     transform: translateY(0);
     visibility: visible;
+    /* feat-279: visible at once on open, so the first item can take the focus; the fade stays. */
+    transition:
+        opacity 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+        transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+        visibility 0s;
 }
 
 /* Разделитель */
@@ -550,7 +623,12 @@ const logout = async () => {
     background: none;
     border: none;
     cursor: pointer;
-    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    /* feat-279: not `all`: a transition of the inherited `visibility` kept an item hidden for a
+       moment after the menu opened, and Tab skipped it. */
+    transition:
+        background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     color: var(--text-primary);
     border-radius: 6px;
     margin: 1px 6px;

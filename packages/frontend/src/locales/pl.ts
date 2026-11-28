@@ -201,6 +201,39 @@ const pl: typeof en = {
         errorVerificationCode: 'Podaj kod weryfikacyjny',
     },
 
+    menu: {
+        open: 'Otwórz menu',
+        close: 'Zamknij menu',
+        navigation: 'Nawigacja',
+        support: 'Pomoc',
+        account: 'Konto',
+        about: 'O projekcie',
+        accountGroup: 'Konto',
+        myAccount: 'Moje konto',
+        lightTheme: 'Jasny motyw',
+        darkTheme: 'Ciemny motyw',
+        legal: 'Informacje prawne i pomoc',
+        aiPolicy: 'Zasady dotyczące AI',
+        privacyPolicy: 'Polityka prywatności',
+        terms: 'Regulamin',
+        cookies: 'Polityka cookies',
+        logout: 'Wyloguj',
+        loggingOut: 'Wylogowywanie...',
+        installApp: 'Zainstaluj aplikację',
+    },
+
+    header: {
+        back: 'Wstecz',
+        support: 'Pomoc',
+        websocketStatus: 'Stan WebSocket: {status}',
+        websocket: {
+            open: 'Połączono',
+            connecting: 'Łączenie...',
+            closed: 'Rozłączono',
+            unknown: 'Nieznany',
+        },
+    },
+
     update: {
         title: 'Dostępna aktualizacja',
         subtitle: 'Odśwież stronę, aby korzystać z najnowszej wersji.',
