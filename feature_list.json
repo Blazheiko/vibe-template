@@ -2753,6 +2753,16 @@
             "dependencies": ["feat-275"],
             "status": "done",
             "evidence": "PR #901 (merge 2ed1338), entry #900, status #902 (review). http-rate-limit.spec runs on fake timers at a fixed time, so the exact Retry-After: 60 expectations no longer depend on test duration; a new test advances 1.5 s and expects 59. The ESLint list of Node built-ins keeps the legacy _-prefixed names (negative check: '_http_common' in vendor and '_stream_readable' in src/app fail lint). main-service setHeaderAndCookie uses setHeader; main-service.spec fails on the old push and passes now. CI on 70b0874 (merge of main): test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46035255241/job/140628917160); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46035255323/job/140628918037); quality, e2e, e2e-live green; local make check exit 0 (backend 3954 tests). Seen once while checking: upload-limits.transport.spec ('20 parallel 50 MiB uploads') got a 400 under load, outside this change; the rerun was green."
+        },
+        {
+            "id": "feat-277",
+            "name": "uWebSockets.js v20.72.0",
+            "description": "Upgrade uWebSockets.js from v20.71.0 to v20.72.0 (uWebSockets core v20.81.0), plan docs/plan/uwebsockets-upgrade-plan.md. (1) Version bump; drop patches/uWebSockets.js@20.71.0.patch, pnpm.patchedDependencies and COPY patches in both Dockerfiles (the upstream ESM entry is fixed). (2) uws-parser.transport.spec.ts on a real server: new parser 400s (non-ASCII target, Host with a path, Content-Length >= 2^56, trailers with a bare LF), OPTIONS * with CORS off/allowed/foreign Origin, outgoing UTF-8 bytes, onWritable backpressure on a large static file; raw-http gains bodyBytes and a wait-for-server-close helper. (3) Docs: request-lifecycle (parser rejections in two classes), stack version, toolchain patch section. (4) Linux x64 and arm64 verification with platform/arch/ABI recorded. Out of scope: HttpCache microcaching, HTTP/3.",
+            "owner": "Blazheiko",
+            "branch": "chore/uws-20-72",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
