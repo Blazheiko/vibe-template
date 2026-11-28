@@ -2771,8 +2771,8 @@
             "owner": "Blazheiko",
             "branch": "feat/fe-lazy-routes",
             "dependencies": [],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #910 (merge 05763825), plan #908, start #909, review #911. Every route except Login is a lazy chunk and AvatarEditorModal loads on open; cold /login for the heaviest locale (uk) 340 156 -> 286 846 gzip bytes (-15.7 %), guarded by check-cold-start-budget.mjs in make check (budget 293 000). preload-recovery.ts: router.onError reloads once to to.fullPath (loop guard in sessionStorage keyed by path + build), waits for online when offline (dropped if the user navigated elsewhere), ChunkLoadNotice with a manual reload when the reload did not help or storage is unavailable, Sentry only for the give-up; vite:preloadError prevents default only when it reloads (Vite resolves a prevented import with undefined). skipWaiting() kept on purpose (documented). Evidence: make check exit 0 (frontend 1049 tests, backend 3989); test:e2e 134 passed; e2e-security stale-chunk 4 passed x3 and service-worker passed; test:e2e:stale-build (real builds A -> B, backend restart, active SW) passed; docs:build + docs:verify passed; CI quality, e2e, e2e-live, build green on 363ac9fb (https://github.com/Blazheiko/vibe-template/actions/runs/46149308791). Pre-existing, not touched: e2e-security csrf.spec.ts:124 fails on main cf70b43d too (suite not in CI)."
         },
         {
             "id": "feat-279",
