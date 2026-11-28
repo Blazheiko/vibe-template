@@ -130,11 +130,22 @@ beforeEach(() => {
 
 const UWS_400 = 'HTTP/1.1 400 Bad Request'
 
-/** uWS's own 400 with Connection: close, and the server closed the connection. */
+/**
+ * uWS's own 400, closed by the server: its HTML page without Content-Length, and none of
+ * what our code adds to an answer (JSON error body, CORS, security headers).
+ */
 const expectParserRefusal = (result: ClosedExchange): void => {
     expect(result.response?.statusLine).toBe(UWS_400)
     expect(result.response?.headers.get('connection')).toBe('close')
     expect(result.closedByServer).toBe(true)
+    const headers = [...(result.response?.headers.keys() ?? [])]
+    expect(headers).not.toContain('content-length')
+    expect(headers.filter((name) => name.startsWith('access-control-'))).toEqual([])
+    for (const name of ['content-security-policy', 'x-content-type-options', 'x-frame-options']) {
+        expect(headers).not.toContain(name)
+    }
+    const body = result.bytes.subarray(result.bytes.indexOf('\r\n\r\n') + 4).toString()
+    expect(body).toMatch(/^<h1>Bad Request<\/h1>/)
 }
 
 const sendRaw = (head: string | Buffer): Promise<ClosedExchange> =>
@@ -163,6 +174,17 @@ describe('uWS refuses the request line and headers itself (class 1)', () => {
 
         expect(response.statusLine).toBe('HTTP/1.1 404 Not Found')
         expect(JSON.parse(response.body)).toMatchObject({ code: 'not_found' })
+    })
+
+    it('has no CORS headers even with CORS on and an allowed Origin', async () => {
+        cors.enabled = true
+
+        const result = await sendRaw(
+            `GET /api/parser/text/a HTTP/1.1\r\nHost: 127.0.0.1/x\r\nOrigin: ${ALLOWED_ORIGIN}\r\n\r\n`,
+        )
+
+        expectParserRefusal(result)
+        expect(text).not.toHaveBeenCalled()
     })
 
     it.each(['127.0.0.1/path', '127.0.0.1?q', '127.0.0.1#f'])(

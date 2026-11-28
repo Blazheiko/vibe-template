@@ -61,6 +61,10 @@ beforeAll(async () => {
         }
         void staticCacheHandler(res, req, entry)
     })
+    // An empty string through the native writer (uWebSockets.js #1338: the pool's end).
+    app.get('/empty', (res) => {
+        res.end('')
+    })
     // Every other request: records that the handler ran and how the request ended.
     app.any('/*', (res) => {
         anyCalls.push('handler')
@@ -86,7 +90,8 @@ beforeAll(async () => {
         },
         open: (ws) => {
             const kind = ws.getUserData().kind
-            if (kind !== 'echo') ws.send(kind === 'long' ? LONG : MIXED, false)
+            if (kind === 'echo') return
+            ws.send(kind === 'long' ? LONG : kind === 'empty' ? '' : MIXED, false)
         },
         message: (ws, message, isBinary) => {
             // Back as a JS string, so the writer encodes it again.
@@ -253,6 +258,20 @@ describe('requests uWS refuses only after the handler ran (class 2)', () => {
     })
 })
 
+describe('an empty string through the native writer (uWebSockets.js #1338)', () => {
+    it("res.end(''): 200 with Content-Length: 0 and no body", async () => {
+        const result = await exchangeUntilClose(PORT, (socket) => {
+            socket.write('GET /empty HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n')
+        })
+
+        expect(result.response?.statusLine).toBe('HTTP/1.1 200 OK')
+        expect(result.response?.headers.get('content-length')).toBe('0')
+        expect(result.response?.bodyBytes.byteLength).toBe(0)
+        // Nothing after the headers either.
+        expect(result.bytes.subarray(result.bytes.indexOf('\r\n\r\n') + 4).byteLength).toBe(0)
+    })
+})
+
 describe('static streaming with backpressure on a real uWS (onWritable)', () => {
     it('resumes through onWritable and delivers the whole file to a slow client', async () => {
         writableCalls = 0
@@ -296,6 +315,12 @@ describe('ws.send of UTF-8 text on a real uWS', () => {
         const received = await receiveText(`/ws/${kind}`)
 
         expect(received.equals(Buffer.from(expected, 'utf8'))).toBe(true)
+    })
+
+    it("ws.send(''): an empty text message arrives", async () => {
+        const received = await receiveText('/ws/empty')
+
+        expect(received.byteLength).toBe(0)
     })
 
     it('echoes UTF-8 text back unchanged', async () => {
