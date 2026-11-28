@@ -2871,7 +2871,7 @@
             "owner": "Blazheiko",
             "branch": "fix/e2e-live-passkey-button",
             "dependencies": [],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
