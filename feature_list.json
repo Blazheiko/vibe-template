@@ -2763,6 +2763,106 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #905 (merge 7bf9bc9), plan + entry #904, status #906 (review). uWebSockets.js v20.71.0 -> v20.72.0 (core v20.81.0, tarball c452ac24); patches/uWebSockets.js@20.71.0.patch, pnpm.patchedDependencies and COPY patches removed (upstream ESM entry fixed). New uws-native/uws-parser transport specs pin the parser 400s in two classes (class 1 before the handler: raw UTF-8 target, Host with / ? #; class 2 after it: Content-Length >= 2^56, bare-LF trailer), the uWS 400 format (HTML, no Content-Length, no CORS/security headers), OPTIONS * (reaches any('/*')), outgoing UTF-8 and empty-string writes, onWritable backpressure; negative check: 14 of the first 26 fail on 20.71.0. Docs: request-lifecycle (what uWS refuses by itself), toolchain (no patches, vitest --clearCache after a dependency swap). CI on 337ba0b3: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46125459385/job/140918950389); test-redis 22 files / 231 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/46125459434/job/140918950337); quality, e2e, e2e-live, build green (https://github.com/Blazheiko/vibe-template/actions/runs/46125459410); local make check exit 0 (backend 3989 tests). make prod-smoke and the golden path (register, mail, sign-in, WebSocket with a routed event, avatar bytes in S3 equal to the upload, SIGTERM exit 0) passed on linux/arm64 and linux/amd64 (ABI 137, Node 24.22.2). Seen once: e2e-live session-revocation.spec.ts:129 timed out on #906 (also on main 45801916350, on 20.71.0); the rerun was green."
+        },
+        {
+            "id": "feat-278",
+            "name": "Frontend: lazy routes, stale-chunk recovery, cold-start budget",
+            "description": "Lazy-load all routes except Login and AvatarEditorModal on open; recover from a failed chunk import (router.onError to to.fullPath, one reload guarded in sessionStorage keyed by to.path, offline wait, no auto reload without sessionStorage, no Sentry event for the expected first reload); build A -> deploy B checks with a server restart and an active SW; skipWaiting() kept on purpose; cold-start budget script (fresh build, max of en/uk/pl gzip JS+CSS for /login) in make check. Tasks T1-T7 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-lazy-routes",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-279",
+            "name": "Frontend: header keyboard navigation and i18n",
+            "description": "Localized accessible names for the hamburger and Back, aria-expanded/aria-controls, Escape closes the menu and returns focus, collapsed menu sections inert; all hardcoded strings of AppHeader, MenuButton and PwaInstallButton into vue-i18n (en/uk/pl). Tasks T8-T12 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-header-keyboard",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-280",
+            "name": "Frontend: lazy Sentry SDK",
+            "description": "@sentry/vue and replayIntegration through dynamic import behind the sentry-service facade with a bounded buffer; enabled: await init before app.mount (first-mount errors, pageload, Replay kept); disabled: no SDK request; new e2e for early errors and the first-navigation trace; Sentry banned from the cold-start graph. Tasks T13-T17 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-sentry-lazy",
+            "dependencies": ["feat-278"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-281",
+            "name": "Frontend: lazy PWA install fallback",
+            "description": "@khmyznikov/pwa-install loaded only without native install prompt support (shouldLoadPwaFallback), preloaded on pointerenter/focus of the menu button; element event handlers bound by a watch on the ref; Chromium native-prompt and WebKit fallback e2e. Tasks T18-T21 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-pwa-install-lazy",
+            "dependencies": ["feat-278", "feat-279"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-282",
+            "name": "Frontend: CSS cleanup in small portions",
+            "description": "Local visual check (playwright.visual.config.ts, outside CI, external fonts blocked); remove create-vue base.css/main.css; dead classes of shared-components.css and styles.css. Tasks T22-T26 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-css-cleanup",
+            "dependencies": ["feat-278"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-283",
+            "name": "Frontend: native dialogs to contextual UX",
+            "description": "ConfirmDialog gains busy/variant and replaces confirm() in the knowledge base; avatar error next to the field; a visible \"session still active\" status for logout_retry (kept); no-alert lint rule; toast placeholder comment removed. Tasks T27-T31 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-native-dialogs",
+            "dependencies": ["feat-279"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-284",
+            "name": "Frontend: router meta.public, catch-all 404, hygiene",
+            "description": "RouteMeta public/scrollable in env.d.ts replace PUBLIC_PATHS/SCROLLABLE_ROUTES (initial URL classified by router.resolve, /Reset-Password/ kept public); client 404 route; return-based beforeEach; LocationQueryRaw instead of as never; unused meta.title removed; PRODUCT.name in the SW; dompurify out of the docs; matchMedia guard. Tasks T32-T38 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-router-meta-404",
+            "dependencies": ["feat-278", "feat-279"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-285",
+            "name": "Frontend: shared UiModal",
+            "description": "e2e modal selectors to getByRole(dialog) first; UiModal proven on ConfirmDialog and AvatarEditorModal, ConfirmDialog -> ui/UiConfirmDialog; remaining modals migrated one or two per commit; ui/ import boundary lint rule. Tasks T39-T44 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-ui-modal",
+            "dependencies": ["feat-283"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-286",
+            "name": "Frontend: UserAccount decomposition",
+            "description": "UiButton/UiField/UiInput/UiBadge introduced with their first consumers; UserAccount.vue split into section components one per commit. Tasks T45-T49 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-account-decompose",
+            "dependencies": ["feat-282", "feat-285"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-287",
+            "name": "Frontend: SupportView and large admin pages split",
+            "description": "New support and knowledge-base e2e first; useSupportChat composable; AdminKnowledgeBaseView and AdminAuditLogView logic into composables and subcomponents. Tasks T50-T53 in docs/plan/frontend-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/fe-support-admin-split",
+            "dependencies": ["feat-285"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
