@@ -12,6 +12,11 @@ export default {
 
     app: {
         loading: 'Loading...',
+        chunkLoad: {
+            offline: 'No network connection. The page will open when the connection is back.',
+            failed: 'This page could not be loaded. Reload to try again.',
+            reload: 'Reload page',
+        },
     },
 
     emailVerification: {

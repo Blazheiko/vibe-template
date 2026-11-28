@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { withReauth } from '@/composables/useReauth'
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
@@ -10,7 +10,6 @@ import { avatarApi, authApi, pushSubscriptionApi } from '@/utils/api'
 import { buildAvatarUrl } from '@/utils/avatar-url'
 import { passwordLengthProblem } from '@/utils/validate-password'
 import { getErrorReason, getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
-import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
 import ActiveSessions from '@/components/account/ActiveSessions.vue'
 import SignInSecurity from '@/components/account/SignInSecurity.vue'
 import NotificationPreferences from '@/components/account/NotificationPreferences.vue'
@@ -31,6 +30,9 @@ import {
 } from 'shared/enums'
 import { allowedTimeZones, UTC_TIME_ZONE } from 'shared/utils'
 import type { Profile } from 'shared'
+
+// feat-278: the cropper (vue-advanced-cropper) loads when the editor first opens.
+const AvatarEditorModal = defineAsyncComponent(() => import('@/components/AvatarEditorModal.vue'))
 
 defineOptions({
     name: 'UserAccount',

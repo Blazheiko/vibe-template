@@ -20,7 +20,7 @@ ENV_FILE := packages/backend/.env
 
 .PHONY: help setup init doctor install env build-shared \
 	dev dev-backend dev-frontend dev-landing dev-playground prod-local prod-smoke start \
-	check verify-makefile verify-compose check-bundle-graph typecheck lint lint-fix format format-check \
+	check verify-makefile verify-compose check-bundle-graph check-cold-start typecheck lint lint-fix format format-check \
 	test test-e2e test-e2e-landing test-pg test-redis coverage \
 	services-up services-down \
 	db-create db-migrate db-generate db-seed db-studio user-role user-mfa-reset mfa-keys \
@@ -86,7 +86,7 @@ start: ## Start the built backend
 
 ##@ Quality
 
-check: build-shared verify-makefile verify-compose format-check typecheck lint check-bundle-graph test ## Everything the CI quality job checks
+check: build-shared verify-makefile verify-compose format-check typecheck lint check-bundle-graph check-cold-start test ## Everything the CI quality job checks
 
 verify-makefile: ## Check that Makefile targets are described and call existing scripts
 	@node scripts/verify-makefile.mjs
@@ -96,6 +96,9 @@ verify-compose: ## Check that compose runs the app with the API prefix the image
 
 check-bundle-graph: ## Frontend bundle carries no validation schema (ADR 0005)
 	$(PNPM) check:bundle-graph
+
+check-cold-start: ## Frontend /login cold start stays within its gzip budget
+	$(PNPM) check:cold-start
 
 typecheck: ## TypeScript checks in every package
 	$(PNPM) typecheck
